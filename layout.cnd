@@ -1,0 +1,10 @@
+directives:
+  - size: {width: 120, height: 200, selector: Key + Lock}
+  - attribute: {field: cut0}
+  - attribute: {field: cut1}
+  - attribute: {field: cut2}
+  - attribute: {field: cut3}
+  - attribute: {field: cut4}
+  - hideAtom: {selector: Boolean}
+  - tag: {field: breaks, selector: Lock, toTag: Lock, name: breakAt, value: breaks.True}
+  - flag: hideDisconnectedBuiltIns

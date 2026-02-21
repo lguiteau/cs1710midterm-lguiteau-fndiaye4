@@ -50,7 +50,7 @@ pred validStations {
         #s.Neighbors >= 1
 
         //every station except the central station  must have exactly 1 ancestor station
-        (s != CentralStation) implies (#(s.Neighbors) == 1)
+        // (s != CentralStation) implies (#(s.Neighbors) == 1)
 
         // the central station must have at least 2 neighbors
         (s = CentralStation) implies (#s.Neighbors >= 2)

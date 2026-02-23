@@ -9,14 +9,14 @@ one sig True, False extends Boolean {}
 
 sig Station {
     // fields
-    Neighbors: set Station,
+    parent: one Station,
     isStormComing: one Boolean  
 }
 
 //Root Station
 one sig CentralStation extends Station {
     // fields
-    Atlanta: one Station
+    Atlanta: lone Station
 }
 
 sig CityStations extends Station {
@@ -34,28 +34,26 @@ pred validStations {
     // constraints
 
     all s: Station | {
+
+        // the root has no parent
+        no CentralStation.parent
+        
         // A station cannot be its own neighbor
         s not in s.Neighbors
 
-        // Neighbors must be symmetric
-        all n: s.Neighbors | s in n.Neighbors
+        // all noded stations must be connected to the central station through a path of its ancestors
+        reachable[CentralStation, s, parent]
 
-        // A station cannot have more than 2 neighbors
-        #s.Neighbors <= 2
+        // all stations must have at least 1 parent
+        // #s.parent >= 1
 
-        // all noded stations must be connected to the central station through a path of neighbors
-        all n: Station | reachable[CentralStation, n, s.Neighbors]
+       // every station except the central station  must have exactly 1 ancestor station
+        (s != CentralStation) implies (#(s.parent) == 1)
 
-        // all stations must have at least 1 neighbor
-        #s.Neighbors >= 1
-
-        //every station except the central station  must have exactly 1 ancestor station
-        // (s != CentralStation) implies (#(s.Neighbors) == 1)
-
-        // the central station must have at least 2 neighbors
-        (s = CentralStation) implies (#s.Neighbors >= 2)
+        // the central station must have 2 neighbors
+        // (s = CentralStation) implies (#s.Neighbors = 2)
 
         // All station should eventually recieve the storm warning if the central station receives it
-        (CentralStation.isStormComing = True) implies (s.isStormComing = True)
+        (CentralStation.isStormComing = True) implies (s.isStormComing = True) // Think about this
     }
 }

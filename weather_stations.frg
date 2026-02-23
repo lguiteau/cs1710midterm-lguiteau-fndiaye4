@@ -9,7 +9,7 @@ one sig True, False extends Boolean {}
 
 sig Station {
     // fields
-    parent: one Station,
+    parent: lone Station,
     isStormComing: one Boolean  
 }
 
@@ -36,7 +36,7 @@ pred validStations {
     all s: Station | {
 
         // the root has no parent
-        no CentralStation.parent
+        (s = CentralStation) implies (s.parent = none)
         
         // A station cannot be its own neighbor
         s not in s.Neighbors
@@ -48,8 +48,8 @@ pred validStations {
         // #s.parent >= 1
 
        // every station except the central station  must have exactly 1 ancestor station
-        (s != CentralStation) implies (#(s.parent) == 1)
-
+        (s != CentralStation) implies (#s.parent = 1)
+    
         // the central station must have 2 neighbors
         // (s = CentralStation) implies (#s.Neighbors = 2)
 

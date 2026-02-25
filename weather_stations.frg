@@ -18,6 +18,7 @@ sig Station {
 
 //Root Station
 one sig AtlantaCentralStation extends Station {
+  centralStationStormInfo: one Int  // 0 for false, 1 for true
 }
 
 
@@ -64,7 +65,7 @@ pred defineTree {
 pred stormPropagation {
     validStations
 
-       AtlantaCentralStation.isStormComing = 0 or AtlantaCentralStation.isStormComing = 1
+       AtlantaCentralStation.centralStationStormInfo = 0 or AtlantaCentralStation.centralStationStormInfo= 1 
     all s: Station | s != AtlantaCentralStation implies {
         s.isStormComing = s.parent.isStormComing  -- propagates down from root
     }

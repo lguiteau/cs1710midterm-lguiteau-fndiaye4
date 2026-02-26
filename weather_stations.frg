@@ -40,7 +40,7 @@ pred validStations {
         s.parent != s
 
         -- All stations except the root must be reachable from the central station
-        (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent] implies 
+        (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent]  
 
         -- No station can be connected to the central station through more than one path
         -- s != AtlantaCentralStation implies not reachable[s, s, parent]

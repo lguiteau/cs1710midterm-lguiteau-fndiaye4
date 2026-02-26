@@ -9,14 +9,17 @@ open "weather_stations.frg"
 test suite for validStations{
 
 // AtlantaCentralStation (a.k.a root) should have not parent
- test expect centralStationNoParent {
-    noParentForRoot: {
-        validStations 
-            all s: Station | {
-                s != AtlantaCentralStation implies one s.parent
-            }
-    } for 8 Station is sat
- }
+ assert centralStationNoParent{ 
+    validStations
+    all s: Station | (
+        s != AtlantaCentralStation implies one s.parent
+    )
+}
+
+
+check centralStationNoParent for 8 but 1 Station
+
+
 
  test expect OwnParent{
     ownParents:{

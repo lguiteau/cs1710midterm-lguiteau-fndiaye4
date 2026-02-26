@@ -32,6 +32,12 @@ rootNoParent: assert { --exclusion because it's similar to an "is unsat" --- "i 
 } is necessary for validStations for 8 but 1 Station
 -- validStations implies this forall
 
+rootNoParentBad: assert { --over constraint because it's a stronger version of the above assertion ... Inclusion 
+    AtlantaCentralStation.parent = Georgetown
+} is unsat for 8 but 1 Station
+
+
+
 
 
  test expect OwnParent{

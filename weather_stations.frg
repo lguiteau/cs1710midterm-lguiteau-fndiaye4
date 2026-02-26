@@ -13,7 +13,6 @@ sig Station {
     -- fields
     parent: lone Station,
     passStormComing: lone Station
-    // propagatesTo: lone Station
 }
 
 
@@ -41,9 +40,6 @@ pred validStations {
 
         -- All stations except the root must be reachable from the central station
         (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent]  
-
-        -- No station can be connected to the central station through more than one path
-        -- s != AtlantaCentralStation implies not reachable[s, s, parent]
 
         -- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
         (s != AtlantaCentralStation) implies one s.parent

@@ -14,13 +14,13 @@ open "weather_stations.frg"
 
 test suite for validStations{
 
-rootNoParent: assert { --exclusion because it's similar to an "is unsat" --- "i bet you can't find an instance to satifies validStations but not this forall"
+rootNoParent: assert { --exclusion because it's similar to an "is unsat" - Tim
     validStations
     AtlantaCentralStation.parent = none
 } is necessary for validStations for 8 Station
 
 
-rootNoParentBad: assert { --over constraint because it's a stronger version of the above assertion ... Inclusion 
+rootNoParentBad: assert { --over constraint  
     validStations
     AtlantaCentralStation.parent = Georgetown
 } is unsat for 8  Station

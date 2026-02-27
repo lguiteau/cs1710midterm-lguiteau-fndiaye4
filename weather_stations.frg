@@ -3,8 +3,7 @@
 -- Load the visualization script
 option run_sterling "layout.cnd"
 
--- abstract sig Boolean {}
--- one sig True, False extends Boolean {}
+
 
 abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
@@ -13,7 +12,7 @@ sig Station {
 -- fields
 parent: lone Station,
 passStormComing: lone Station
-// propagatesTo: lone Station
+
 }
 
 

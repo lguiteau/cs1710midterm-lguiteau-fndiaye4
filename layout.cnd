@@ -1,4 +1,12 @@
 directives:
+  - icon: {showLabels: false, selector: NewOrleans, path: ' http://localhost:8000/NewOrleans.png'}
+  - icon: {showLabels: false, selector: AtlantaCentralStation, path: ' http://localhost:8000/Atlanta.png'}
+  - icon: {showLabels: false, selector: Dallas, path: ' http://localhost:8000/Dallas.png'}
+  - icon: {showLabels: false, selector: NewYork, path: ' http://localhost:8000/NewYork.png'}
+  - icon: {showLabels: false, selector: Philadelphia, path: ' http://localhost:8000/Philadelphia.png'}
+  - icon: {showLabels: false, selector: Denver, path: ' http://localhost:8000/Denver.png'}
+  - icon: {showLabels: false, selector: Georgetown, path: ' http://localhost:8000/Georgetown.png'}
+  - icon: {showLabels: false, selector: LosAngeles, path: ' http://localhost:8000/LosAngeles.png'}
   - size: {width: 120, height: 200, selector: Key + Lock}
   - attribute: {field: cut0}
   - attribute: {field: cut1}

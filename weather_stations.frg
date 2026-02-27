@@ -43,8 +43,6 @@ s.parent != s
         (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent] implies 
         (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent]  
 
--- No station can be connected to the central station through more than one path
--- s != AtlantaCentralStation implies not reachable[s, s, parent]
 
 -- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
 (s != AtlantaCentralStation) implies one s.parent
@@ -66,14 +64,6 @@ Dallas.parent = NewOrleans
 }
 
 
-pred propagatesTo[s, c: Station] {
-c.parent = s and c.passStormComing = s.passStormComing
-}
-
-pred PropagationEdges {
-all s, c: Station | propagatesTo[s, c]
-}
-
 pred defineStormEdges {
 -- isStormComing mirrors parent for all non-root stations
 all s: Station | s != AtlantaCentralStation implies s.passStormComing = s.parent
@@ -87,4 +77,4 @@ validStations
 defineTree
 defineStormEdges
 
-} for 8 but 1 Station
+} for 8 Station

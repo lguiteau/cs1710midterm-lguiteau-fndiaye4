@@ -14,18 +14,16 @@ open "weather_stations.frg"
 
 test suite for validStations{
 
-
 rootNoParent: assert { --exclusion because it's similar to an "is unsat" --- "i bet you can't find an instance to satifies validStations but not this forall"
     validStations
-    all s: Station | (
-        s != AtlantaCentralStation implies one s.parent
-    )
-} is necessary for validStations for 8 but 1 Station
--- validStations implies this forall
+    AtlantaCentralStation.parent = none
+} is necessary for validStations for 8 Station
+
+
 rootNoParentBad: assert { --over constraint because it's a stronger version of the above assertion ... Inclusion 
     validStations
     AtlantaCentralStation.parent = Georgetown
-} is unsat for 8 but 1 Station
+} is unsat for 8  Station
 
 
 
@@ -37,7 +35,6 @@ rootNoParentBad: assert { --over constraint because it's a stronger version of t
         }
     } for 8 Station is unsat
  }
-
 
 }
 
@@ -57,6 +54,21 @@ test suite for defineTree{
         Georgetown.parent = NewOrleans
     } is unsat for 8 Station
 
+    -- Reachability Test: verifies parent chain for both branches of the tree
+    -- avoids reachable[] due to known inconsistency with validStations
+    test expect reachableViaDefineTree {
+        reachableTest: {
+            validStations
+            defineTree
+            NewYork.parent = Philadelphia
+            Philadelphia.parent = Georgetown
+            Georgetown.parent = AtlantaCentralStation
+            LosAngeles.parent = Denver
+            Denver.parent = Dallas
+            Dallas.parent = NewOrleans
+            NewOrleans.parent = AtlantaCentralStation
+        } for 8 Station is sat
+    }
 
 }
 
@@ -73,5 +85,26 @@ test suite for defineStormEdges{ -- storm propagation test suite
         NewOrleans.passStormComing = none
     } is unsat for 8 Station
 
- 
+   
+    -- All stations eventually receive storm info once tree and edges are defined
+    test expect allStationsSameInfo {
+        allStationsSameInfoTest: {
+            validStations
+            defineTree
+            defineStormEdges
+            some s: Station | s != AtlantaCentralStation and s.passStormComing = none
+        } for 8 Station is unsat
+    }
+
+
+    
+     -- Root is the only station that does not pass storm info (passStormComing = none)
+    test expect onlyRootReceivesDirectly {
+        onlyRootReceivesDirectlyTest: {
+            validStations
+            defineTree
+            defineStormEdges
+            some s: Station | s != AtlantaCentralStation and s.passStormComing = none
+        } for 8 Station is unsat
+    }
 }

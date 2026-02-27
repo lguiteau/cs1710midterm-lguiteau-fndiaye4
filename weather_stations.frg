@@ -12,7 +12,7 @@ one sig StormFalse, StormTrue extends StormBool {}
 sig Station {
     -- fields
     parent: lone Station,
-    passStormComing: lone Station
+    passStormComingInfo: lone Station
 }
 
 
@@ -62,7 +62,7 @@ pred defineTree {
 
 
 pred propagatesTo[s, c: Station] {
-    c.parent = s and c.passStormComing = s.passStormComing
+    c.parent = s and c.passStormComingInfo = s.passStormComingInfo
 }
 
 pred PropagationEdges {
@@ -71,10 +71,10 @@ pred PropagationEdges {
 
 pred defineStormEdges {
     -- isStormComing mirrors parent for all non-root stations
-    all s: Station | s != AtlantaCentralStation implies s.passStormComing = s.parent
+    all s: Station | s != AtlantaCentralStation implies s.passStormComingInfo = s.parent.passStormComingInfo
     
     -- Root points to none
-    AtlantaCentralStation.passStormComing = none
+    AtlantaCentralStation.passStormComingInfo = none
 }
 
 run {

@@ -10,76 +10,81 @@ abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
 
 sig Station {
-    -- fields
-    parent: lone Station,
-    passStormComingInfo: lone Station
+-- fields
+parent: lone Station,
+passStormComing: lone Station
+// propagatesTo: lone Station
 }
 
 
 --Root Station
 one sig AtlantaCentralStation extends Station {
-  centralStationStormInfo: one StormBool  -- StormFalse for false, StormTrue for true
+centralStationStormInfo: one StormBool  -- StormFalse for false, StormTrue for true
 }
 
 
 
 one sig Georgetown, Philadelphia, NewYork, 
-        NewOrleans, Denver, LosAngeles, Dallas extends Station {}
+NewOrleans, Denver, LosAngeles, Dallas extends Station {}
 
 
 pred validStations {
-    -- constraints
+-- constraints
 
-    all s: Station | {
+all s: Station | {
 
-        -- the root has no parent
-        (s = AtlantaCentralStation) implies (s.parent = none)
-        
-        -- A station cannot be its own parent
-        s.parent != s
+-- the root has no parent
+(s = AtlantaCentralStation) implies (s.parent = none)
 
-        -- All stations except the root must be reachable from the central station
+-- A station cannot be its own parent
+s.parent != s
+
+-- All stations except the root must be reachable from the central station
+        (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent] implies 
         (s != AtlantaCentralStation) implies reachable[AtlantaCentralStation, s, parent]  
 
-        -- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
-        (s != AtlantaCentralStation) implies one s.parent
+-- No station can be connected to the central station through more than one path
+-- s != AtlantaCentralStation implies not reachable[s, s, parent]
 
-        -- Atlanta can have at most 2 direct children
-        #{s: Station | s.parent = AtlantaCentralStation} <= 2
+-- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
+(s != AtlantaCentralStation) implies one s.parent
 
-    }
+-- Atlanta can have at most 2 direct children
+#{s: Station | s.parent = AtlantaCentralStation} <= 2
+
+}
 }
 
 pred defineTree {
-    Georgetown.parent = AtlantaCentralStation
-    Philadelphia.parent = Georgetown
-    NewYork.parent = Philadelphia
-    NewOrleans.parent = AtlantaCentralStation
-    Denver.parent = Dallas
-    LosAngeles.parent = Denver
-    Dallas.parent = NewOrleans
+Georgetown.parent = AtlantaCentralStation
+Philadelphia.parent = Georgetown
+NewYork.parent = Philadelphia
+NewOrleans.parent = AtlantaCentralStation
+Denver.parent = Dallas
+LosAngeles.parent = Denver
+Dallas.parent = NewOrleans
 }
 
 
 pred propagatesTo[s, c: Station] {
-    c.parent = s and c.passStormComingInfo = s.passStormComingInfo
+c.parent = s and c.passStormComing = s.passStormComing
 }
 
 pred PropagationEdges {
-    all s, c: Station | propagatesTo[s, c]
+all s, c: Station | propagatesTo[s, c]
 }
 
 pred defineStormEdges {
-    -- isStormComing mirrors parent for all non-root stations
-    all s: Station | s != AtlantaCentralStation implies s.passStormComingInfo = s.parent.passStormComingInfo
-    
-    -- Root points to none
-    AtlantaCentralStation.passStormComingInfo = none
+-- isStormComing mirrors parent for all non-root stations
+all s: Station | s != AtlantaCentralStation implies s.passStormComing = s.parent
+
+-- Root points to none
+AtlantaCentralStation.passStormComing = none
 }
 
 run {
-    validStations
-    defineTree
-    defineStormEdges
-    
+validStations
+defineTree
+defineStormEdges
+
 } for 8 but 1 Station

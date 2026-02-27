@@ -34,6 +34,8 @@ defineTree: define tree as a predicate was an optional modeling choice we implem
 
 defineStormEdges :The first thing we wanted to test was the pre-state before storm propagation. It was imperative that no nodes had access to the information at the beginning, with the central hub having it. We also tested how it would run with our  prior predictions. The last two tests target the post-state of the information being given. We wanted to ensure that the root node was the only node to directly receive the information returned by our storm boolean, so that propagation could start strictly from the AtlantaCentralStation. And we checked that after a successful propagation, all stations would eventually receive the information. It was important to test propagation thoroughly because we would never want all stations to just have the information during the initial state, because it contradicts our objective. If there is no propagation, then all stations could point to the storm information directly and would fit our goals of saving time and trying to create a network of communication.
 
+# Unfortunately, our added photos in the visualizer did not end up coming together as they could only be accessed through local hosts, but we included images in this project folder that displays what it would have looked like. 
+
 # Links to websites we used for the postcards (screenshots used for PNGs displayed in visulaizer)
 Los Angeles: https://www.zazzle.com/los_angeles_california_united_states_postcard-256161124599954964?_gl=1*rc06xn*_up*MQ..*_gs*MQ..&gclid=CjwKCAiA-__MBhAKEiwASBmsBMGxPnVtDdupuqTkLHdj17mMsAzssgm-sQ2RC-PE8yK9X-gzdxXv3hoCvtwQAvD_BwE&gbraid=0AAAAAD4EViE8arywip-PNCQSGb6vsspmO
 

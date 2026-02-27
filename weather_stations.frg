@@ -12,7 +12,6 @@ sig Station {
 -- fields
 parent: lone Station,
 passStormComing: lone Station
-
 }
 
 

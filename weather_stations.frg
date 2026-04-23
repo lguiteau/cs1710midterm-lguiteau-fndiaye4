@@ -1,5 +1,9 @@
 #lang forge/temporal
 
+-- temporal constraints
+option min_tracelength 2
+option max_tracelength 10
+
 -- Load the visualization script
 // option run_sterling "layout.cnd"
 
@@ -9,18 +13,18 @@ abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
 
 sig Station {
--- fields
-parent: lone Station,
-passStormComing: lone Station,
-var stormInfo: lone StormBool 
-
+  -- fields
+  parent: lone Station,
+  passStormComing: lone Station,
+  originatesInfo: lone StormBool,
+  var stormInfo: lone StormBool 
 }
 
 
 --Root Station
-one sig CentralStation extends Station {
-// centralStationStormInfo: one StormBool  -- StormFalse for false, StormTrue for true
-}
+// one sig CentralStation extends Station {
+//   // centralStationStormInfo: one StormBool  -- StormFalse for false, StormTrue for true
+// }
 
 
 
@@ -28,68 +32,81 @@ one sig Georgetown, Philadelphia, NewYork,
 NewOrleans, Denver, LosAngeles, Dallas extends Station {}
 
 
+-- validStations predicate
 pred validStations {
--- constraints
+  all s: Station | {
+    -- A station cannot be its own parent
+    s.parent != s
 
-all s: Station | {
+    -- Originators act as roots and have no parent
+    (some s.originatesInfo) implies (s.parent = none)
 
--- the root has no parent
-(s = CentralStation) implies (s.parent = none)
+    -- Non-originators must have exactly one parent
+    (no s.originatesInfo) implies one s.parent
 
--- A station cannot be its own parent
-s.parent != s
-
--- All stations except the root must be reachable from the central station
-  (s != CentralStation) implies s in CentralStation.^~parent
-
-
-// -- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
-(s != CentralStation) implies one s.parent
-
-
-}
-// -- Atlanta can have at most 2 direct children
-#{s: Station | s.parent = CentralStation} <= 2
+    -- All non-originators must be reachable from SOME originator
+    (no s.originatesInfo) implies {
+      some orig: Station | {
+        some orig.originatesInfo
+        s in orig.^~parent
+      }
+    }
+  }
 }
 
 
-pred defineTree {
-Georgetown.parent = CentralStation
-Philadelphia.parent = Georgetown
-NewYork.parent = Philadelphia
-NewOrleans.parent = CentralStation
-Denver.parent = Dallas
-LosAngeles.parent = Denver
-Dallas.parent = NewOrleans
-}
+
+// pred defineTree {
+// Georgetown.parent = CentralStation
+// Philadelphia.parent = Georgetown
+// NewYork.parent = Philadelphia
+// NewOrleans.parent = CentralStation
+// Denver.parent = Dallas
+// LosAngeles.parent = Denver
+// Dallas.parent = NewOrleans
+// }
 
 pred init {
-  -- Only the central station has storm info at time 0
-  -- (it directly receives the boolean signal)
-  one CentralStation.stormInfo
+  -- Originators have their specific storm info at time 0
+  all s: Station | (some s.originatesInfo) => {
+    s.stormInfo = s.originatesInfo
+  }
 
   -- All other stations start with no info yet
-  all s: Station | s != CentralStation implies no s.stormInfo
+  all s: Station | (no s.originatesInfo) => {
+    no s.stormInfo
+  }
 }
 
 
 pred defineStormEdges {
--- The central station's info never changes (it is the source)
-  CentralStation.stormInfo = CentralStation.stormInfo'
+  -- Originators' info never changes (they are the sources)
+  all s: Station | (some s.originatesInfo) => {
+    s.stormInfo' = s.stormInfo
+  }
+  all s: Station | (some s.originatesInfo) => {
+    s.passStormComing = none
+  }
 
-  all s: Station | s != CentralStation implies s.passStormComing = s.parent
-  CentralStation.passStormComing = none
+  -- Non-originators point to their parent for passing info
+  all s: Station | (no s.originatesInfo) => {
+    s.passStormComing = s.parent
+  }
 
-  -- Each other station: if its parent has info, adopt it next state
-  -- If it already has info, keep it (info is sticky once received)
-  all s: Station | s != CentralStation implies {
-    (some s.parent.stormInfo) implies s.stormInfo' = s.parent.stormInfo
-    (no s.parent.stormInfo)   implies s.stormInfo' = s.stormInfo
+  -- Each non-originator: if its parent has info, adopt it next state.
+  -- If it already has info, keep it (sticky info)
+  all s: Station | (no s.originatesInfo) => {
+    (some s.parent.stormInfo) => {
+      s.stormInfo' = s.parent.stormInfo
+    }
+    (no s.parent.stormInfo) => {
+      s.stormInfo' = s.stormInfo
+    }
   }
 }
 
 pred traces {
-  defineTree
+  // defineTree
   validStations
   init
   always defineStormEdges
@@ -98,4 +115,8 @@ option max_tracelength 10
 
 run {
   traces
+  some disj s1, s2: Station {
+    some s1.originatesInfo
+    some s2.originatesInfo
+  }
 } for 8 Station

@@ -36,13 +36,11 @@ all s: Station | {
 -- the root has no parent
 (s = CentralStation) implies (s.parent = none)
 
-// -- A station cannot be its own parent
+-- A station cannot be its own parent
 s.parent != s
 
-// -- All stations except the root must be reachable from the central station
-        // (s != CentralStation) implies reachable[CentralStation, s, parent] implies 
-        // (s != CentralStation) implies reachable[CentralStation, s, parent]  
-       (s != CentralStation) implies reachable[s, CentralStation, parent]
+-- All stations except the root must be reachable from the central station
+  (s != CentralStation) implies s in CentralStation.^~parent
 
 
 // -- Each station (except the root) must have a path back to the root whether that be through a parent, ancestor, or direct
@@ -92,7 +90,7 @@ pred defineStormEdges {
 
 pred traces {
   defineTree
-//   validStations
+  validStations
   init
   always defineStormEdges
 }

@@ -1,4 +1,5 @@
 #lang forge/temporal
+option run_sterling "layout.cnd"
 
 option min_tracelength 2
 option max_tracelength 15
@@ -117,7 +118,24 @@ fun liveSource[s: Station]: lone Station {
 
 -- ── Failsafe stub ─────────────────────────────────────────────────────────────
 pred failsafe[s: Station] {
-  -- TODO: implement later
+  -- Case 1: Backup is alive and has info → reroute to backup
+  (backupLive[s] and some s.backup.stormInfo and no s.backup.failed) implies { -- Parent went silent but backup is healthy, so the station reroutes. 
+    s.stormInfo' = s.backup.stormInfo
+    s.passStormComing = s.backup 
+    no s.lostOriginator'
+  }
+
+  -- Case 2: Backup exists but also has no info or is failed → freeze, stay lost
+  (some s.backup and (some s.backup.failed or no s.backup.stormInfo)) implies { -- backup exists but is also unreachable or uninformed
+    s.stormInfo' = s.stormInfo
+    one s.lostOriginator'
+  }
+
+  -- Case 3: No backup at all → freeze, stay lost
+  (no s.backup) implies {
+    s.stormInfo' = s.stormInfo
+    one s.lostOriginator'
+  }
 }
 
 pred defineStormEdges {
@@ -192,4 +210,4 @@ run {
   some s: Station | some s.originatesInfo and eventually some s.failed
   -- Weaker: just check the counter gets above 0
   some s: Station | eventually s.parentBeats > 0
-} for exactly 8 Station, 5 Int
+} for exactly 7 Station, 5 Int

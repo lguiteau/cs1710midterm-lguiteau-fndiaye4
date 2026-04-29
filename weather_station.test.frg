@@ -2,185 +2,338 @@
 
 open "weather_stations.frg"
 
---Testing Suite for our 3 predicates
--- Each predicate will have assertions + 1 bad example + 1 Good Example
+-- ============================================================
+-- Testing Suite for Weather Station Storm Propagation Model
+-- ============================================================
+-- This model simulates storm information propagating through
+-- a network of weather stations. One or more stations act as
+-- originators (the source of truth). Info spreads hop-by-hop
+-- through parent edges. Stations can fail, triggering a
+-- failsafe that reroutes through backup stations.
+-- ============================================================
 
---TESTING GUIDELINES: 
---testing all predicates
---domain predicates (things that only have meaning in the domain we're modeling)
---over/under constraint
---inclusion vs. exclusion 
+
+
+-- ============================================================
+-- validStations: structural integrity of the station network
+-- A valid network has no cycles, every non-originator has a 
+-- parent, and backups must differ from parents
+-- ============================================================
 
 test suite for validStations {
 
-    rootNoParent: assert { -- exclusion: root must never have a parent
-        validStations
-        CentralStation.parent = none
-    } is necessary for validStations for 8 Station
-
-
-    rootNoParentBad: assert { -- over constraint: giving root a parent should break validStations
-        validStations
-        CentralStation.parent = Georgetown
-    } is unsat for 8 Station
-
-
+    -- EXCLUSION: a station being its own parent should always be impossible.
     test expect ownParent {
         ownParents: {
             validStations
-            all s: Station | s.parent = s
-        } for 8 Station is unsat
+            some s: Station | s.parent = s
+        } for 7 Station is unsat
     }
 
-    test expect atMostTwoChildren {
-        tooManyChildren: {
+    -- EXCLUSION: an originator must never have a parent.
+    test expect originatorNoParent {
+        originatorNoParentTest: {
             validStations
-            #{s: Station | s.parent = CentralStation} > 2
-        } for 8 Station is unsat
+            some s: Station | some s.originatesInfo and some s.parent
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: every non-originator must have exactly one parent.
+    test expect nonOriginatorNeedsParent {
+        nonOriginatorNeedsParentTest: {
+            validStations
+            some s: Station | no s.originatesInfo and no s.parent
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: a station's backup must never be the same as its parent.
+    test expect backupDiffersFromParent {
+        backupDiffersTest: {
+            validStations
+            some s: Station | some s.backup and s.backup = s.parent
+        } for 7 Station is unsat
+    }
+
+    -- INCLUSION: a valid network with one originator and all other stations
+    -- connected via parents should satisfy validStations.
+    test expect validNetworkSat {
+        validNetworkTest: {
+            validStations
+            one s: Station | some s.originatesInfo
+        } for 7 Station is sat
+    }
+
+    -- INCLUSION: every non-originator must be reachable from some originator
+    test expect allReachableFromOriginator {
+        allReachableTest: {
+            validStations
+            some orig: Station | {
+                some orig.originatesInfo
+                some s: Station | s != orig and s not in orig.^~parent
+            }
+        } for 7 Station is unsat
     }
 
 }
 
 
-test suite for defineTree {
 
-    test expect defineTreeTest {
-        defineTreeValid: {
-            defineTree
-            init
-        } for 8 Station is sat
-    }
-
-    defineTreeBad: assert { -- exclusion: Georgetown should never have NewOrleans as parent
-        validStations and defineTree
-        Georgetown.parent = NewOrleans
-    } is unsat for 8 Station
-
-    -- Reachability: verifies parent chain for both branches of the tree
-    test expect reachableViaDefineTree {
-        reachableTest: {
-            defineTree
-            NewYork.parent = Philadelphia
-            Philadelphia.parent = Georgetown
-            Georgetown.parent = CentralStation
-            LosAngeles.parent = Denver
-            Denver.parent = Dallas
-            Dallas.parent = NewOrleans
-            NewOrleans.parent = CentralStation
-        } for 8 Station is sat
-    }
-
-}
-
-
+-- ============================================================
+-- init: correctness of the initial state at timestep 0
+-- At t=0, only originators have storm info. All beat counters
+-- start at 0 and nothing has failed yet.
+-- ============================================================
 
 test suite for init {
 
-    -- Only the central station should have storm info at time 0
-    test expect onlyCentralHasInfo {
-        onlyCentralHasInfoTest: {
+    -- EXCLUSION: a non-originator must never have storm info at t=0.
+    test expect nonOriginatorNoInfoAtStart {
+        nonOriginatorNoInfoTest: {
             init
-            some s: Station | s != CentralStation and one s.stormInfo
-        } for 8 Station is unsat
+            some s: Station | no s.originatesInfo and one s.stormInfo
+        } for 7 Station is unsat
     }
 
-    -- Central station must have some storm info at time 0
-    test expect centralHasInfo {
-        centralHasInfoTest: {
+    -- EXCLUSION: an originator must have storm info at t=0.
+    --  if originator has no info, nothing can ever propagate.
+    test expect originatorHasInfoAtStart {
+        originatorHasInfoTest: {
             init
-            no CentralStation.stormInfo
-        } for 8 Station is unsat
+            some s: Station | some s.originatesInfo and no s.stormInfo
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: no station should have failed at t=0.
+    -- Failures only happen during propagation, not at initialization.
+    test expect noFailuresAtStart {
+        noFailuresTest: {
+            init
+            some s: Station | some s.failed
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: all beat counters must start at 0.
+    test expect beatsStartAtZero {
+        beatsZeroTest: {
+            init
+            some s: Station | s.parentBeats != 0 or s.backupBeats != 0
+        } for 7 Station is unsat
+    }
+
+    -- INCLUSION: a valid initial state with one originator should satisfy init.
+    test expect validInitSat {
+        validInitTest: {
+            validStations
+            init
+            one s: Station | some s.originatesInfo
+        } for 7 Station is sat
     }
 
 }
 
 
+
+-- ============================================================
+-- defineStormEdges: correctness of the propagation step
+-- Storm info spreads hop-by-hop each timestep. Originators
+-- keep their info. Non-originators adopt info from their live
+-- source. Failed stations freeze. Beat counters update.
+-- ============================================================
 
 test suite for defineStormEdges {
 
-    -- inclusion: all predicates together should be satisfiable
-    defineStormEdgesGood: assert {
-        validStations and defineTree and init and defineStormEdges
-    } is sufficient for defineStormEdges for 8 Station
-
-
-    -- Central station's storm info must not change between steps
-    test expect centralInfoStable {
-        centralInfoStableTest: {
+    -- EXCLUSION: an originator's storm info must never change.
+    test expect originatorInfoStable {
+        originatorInfoStableTest: {
             validStations
-            defineTree
             init
             defineStormEdges
-            CentralStation.stormInfo != CentralStation.stormInfo'
-        } for 8 Station is unsat
+            some s: Station | some s.originatesInfo and s.stormInfo != s.stormInfo'
+        } for 7 Station is unsat
     }
 
-    -- A station with an informed parent must adopt that info next state
+    -- EXCLUSION: a station whose live parent has storm info must adopt it next step.
     test expect propagationOccurs {
         propagationOccursTest: {
             validStations
-            defineTree
             init
             defineStormEdges
-            -- Georgetown's parent (CentralStation) has info, so Georgetown must get it next
-            one CentralStation.stormInfo
-            no Georgetown.stormInfo'
-        } for 8 Station is unsat
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                parentLive[s]
+                some s.parent.stormInfo
+                no s.parent.failed
+                no s.stormInfo'   -- station failed to adopt parent's info
+            }
+        } for 7 Station is unsat
     }
 
-    -- A station with no informed parent must keep its current info (no spontaneous change)
+    -- EXCLUSION: a failed station must freeze its storm info.
+    test expect failedStationFreezes {
+        failedStationFreezesTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.failed
+                s.stormInfo' != s.stormInfo
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: failures must be sticky — once failed, always failed.
+    test expect failuresAreSticky {
+        failuresStickyTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | some s.failed and no s.failed'
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: a station with no live source must not spontaneously change info.
     test expect noSpontaneousChange {
         noSpontaneousChangeTest: {
             validStations
-            defineTree
             init
             defineStormEdges
-            no NewYork.parent.stormInfo
-            NewYork.stormInfo' != NewYork.stormInfo
-        } for 8 Station is unsat
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                no liveSource[s]
+                s.stormInfo' != s.stormInfo
+            }
+        } for 7 Station is unsat
     }
 
 }
 
 
 
+-- ============================================================
+-- failsafe: behavior when a station's parent goes silent
+-- When parentBeats >= TIMEOUT, the station reroutes to backup
+-- if available, otherwise freezes and marks lostOriginator.
+-- ============================================================
+
+// test suite for failsafe {
+//       -- INCLUSION: rerouting to backup actually happens in a trace
+//     test expect failsafeReroutestoBackup {
+//         failsafeRerouteTest: {
+//             traces
+//             some s: Station | {
+//                 no s.originatesInfo
+//                 some s.backup
+//                 eventually {
+//                     s.parentBeats >= TIMEOUT
+//                     some s.backup.stormInfo
+//                     no s.backup.failed
+//                     s.stormInfo' = s.backup.stormInfo
+//                 }
+//             }
+//         } for 7 Station is sat
+//     }
+
+//     -- INCLUSION: isolated station with no backup marks lostOriginator
+//     test expect failsafeSetsLostOriginator {
+//         failsafeLostOriginatorTest: {
+//             traces
+//             some s: Station | {
+//                 no s.originatesInfo
+//                 no s.backup
+//                 eventually {
+//                     s.parentBeats >= TIMEOUT
+//                     one s.lostOriginator
+//                 }
+//             }
+//         } for 7 Station is sat
+//     }
+
+//     -- EXCLUSION: station with live backup must not stay permanently uninformed
+//     -- after its parent times out — the failsafe must eventually reroute it
+//     test expect failsafePreventsPermamentIsolation {
+//         failsafeIsolationTest: {
+//             traces
+//             some s: Station | {
+//                 no s.originatesInfo
+//                 no s.failed
+//                 some s.backup
+//                 no s.backup.failed
+//                 eventually {
+//                     s.parentBeats >= TIMEOUT
+//                     some s.backup.stormInfo
+//                 }
+//                 always no s.stormInfo
+//             }
+//         } for 7 Station is unsat
+//     }
+
+// }
+
+
+
+-- ============================================================
+-- traces: end-to-end temporal properties of the full system
+-- These tests verify global properties that should hold across
+-- all timesteps of a valid execution trace.
+-- ============================================================
+
 test suite for traces {
 
-    -- The full traces pred should be satisfiable
-    test expect tracessat {
-        tracesSat: {
+    -- INCLUSION: the full system should be satisfiable.
+    -- If this fails, something in the combined predicates is contradictory.
+    test expect tracesSat {
+        tracesSatTest: {
             traces
-        } for 8 Station is sat
+        } for 7 Station is sat
     }
 
-    -- Eventually every station should be informed
-    test expect allInformedEventually {
-        allInformedTest: {
-            traces
-            not eventually { all s: Station | one s.stormInfo }
-        } for 8 Station is unsat
-    }
-
-    -- No station should ever have info that contradicts the central station
-    test expect signalConsistency {
-        signalConsistencyTest: {
-            traces
-            eventually {
-                some s: Station | 
-                    one s.stormInfo and s.stormInfo != CentralStation.stormInfo
-            }
-        } for 8 Station is unsat
-    }
-
-    -- A non-root station should never be informed before its parent
-    test expect noSkipping {
+    -- EXCLUSION: a non-originator should never have info before its parent does,
+    -- unless it received it via a backup.
+    test expect noSkippingWithoutBackup {
         noSkippingTest: {
             traces
-            some s: Station | s != CentralStation and {
+            some s: Station | {
+                no s.originatesInfo
+                no s.backup          -- no backup to explain receiving info early
                 one s.stormInfo
                 no s.parent.stormInfo
             }
-        } for 8 Station is unsat
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: the number of failed originators should stay bounded.
+    -- boundedFailures ensures at most one originator fails per trace,
+    -- keeping the model tractable and readable.
+    test expect atMostOneOriginatorFails {
+        atMostOneOriginatorFailsTest: {
+            traces
+            #{s: Station | some s.originatesInfo and some s.failed} > 1
+        } for 7 Station is unsat
+    }
+
+    -- INCLUSION: it should be possible for a station to eventually receive
+    -- storm info after starting with none.
+    test expect propagationEventuallyWorks {
+        propagationWorksTest: {
+            traces
+            some s: Station | {
+                no s.originatesInfo
+                no s.stormInfo       -- starts uninformed
+                eventually one s.stormInfo  -- eventually gets informed
+            }
+        } for 7 Station is sat
+    }
+
+    -- INCLUSION: it should be possible for a station to trigger the failsafe,
+    -- demonstrating that failure and recovery can actually occur in a trace.
+    test expect failsafeCanTrigger {
+        failsafeCanTriggerTest: {
+            traces
+            some s: Station | eventually one s.lostOriginator
+        } for 7 Station is sat
     }
 
 }

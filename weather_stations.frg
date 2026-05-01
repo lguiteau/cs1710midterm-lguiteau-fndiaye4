@@ -8,16 +8,17 @@ abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
 
 sig Station {
-  parent:          lone Station,
-  backup:          lone Station,
-  passStormComing: lone Station,
+  parent:          set Station,                -- CHANGED: Now a set
+  backup:          pfunc Station -> Station,    -- CHANGED: Partial function mapping a parent to its backup
+  passStormComing: set Station,                -- CHANGED: Now a set
   originatesInfo:  lone StormBool,
 
   var stormInfo:      lone StormBool,
   var parentBeats:    one Int,
   var backupBeats:    one Int,
   var lostOriginator: lone StormBool,
-  var failed:         lone StormBool   -- NEW: station has gone silent
+  var failed:         lone StormBool, -- NEW: station has gone silent
+  isByzantine:        lone StormBool  -- NEW: Flag for Byzantine nodes
 }
 
 one sig Georgetown, Philadelphia, NewYork,
@@ -42,18 +43,52 @@ pred backupLive[s: Station] {
 //   (some s.failed) => none else s.stormInfo
 // }
 
+-- NEW: What a station actually broadcasts this tick (Handles Byzantine)
+fun broadcasts[s: Station]: lone StormBool {
+  { b: StormBool | 
+    -- Condition 1: Station must not be failed
+    no s.failed and (
+      -- Case A: Not Byzantine - b must match the actual info
+      (no s.isByzantine and b = s.stormInfo) 
+      or
+      -- Case B: Byzantine and StormTrue - b must be StormFalse
+      (some s.isByzantine and s.stormInfo = StormTrue and b = StormFalse)
+      or
+      -- Case C: Byzantine and StormFalse - b must be StormTrue
+      (some s.isByzantine and s.stormInfo = StormFalse and b = StormTrue)
+    )
+  }
+}
+
+-- NEW: Determines the majority consensus from a given set of stations
+fun majorityVote[group: set Station]: lone StormBool {
+  let tVotes = {p: group | broadcasts[p] = StormTrue},
+      fVotes = {p: group | broadcasts[p] = StormFalse} |
+    (add[#tVotes, #tVotes] > #group) => StormTrue else
+    (add[#fVotes, #fVotes] > #group) => StormFalse else
+    none
+}
+
 pred validStations {
   all s: Station | {
-    s.parent != s
-    (some s.originatesInfo) implies s.parent = none
-    (no s.originatesInfo)   implies one s.parent
+    s not in s.parent
+    (some s.originatesInfo) implies no s.parent
+    (no s.originatesInfo)   implies #(s.parent) >= 3
+    -- NEW: ALWAYS true majority (odd number). Max parents is 6, so valid odds are 3 or 5.
+    (no s.originatesInfo)   implies (#(s.parent) = 3 or #(s.parent) = 5) 
     (no s.originatesInfo)   implies {
       some orig: Station | {
         some orig.originatesInfo
         s in orig.^~parent
       }
     }
-    some s.backup implies s.backup != s.parent
+    
+    -- NEW constraints for the backup partial function
+    all p: Station | some s.backup[p] implies p in s.parent
+    all p: s.parent | some s.backup[p] implies {
+      s.backup[p] != s
+      s.backup[p] not in s.parent
+    }
   }
 }
 
@@ -82,9 +117,9 @@ pred updateMissedBeats {
   all s: Station | (no s.originatesInfo) implies {
 
     -- Parent beat: reset if parent is alive AND has stormInfo
-    (some s.parent and no s.parent.failed and some s.parent.stormInfo) implies
+    (some s.parent and some majorityVote[s.parent]) implies
       s.parentBeats' = 0
-    (some s.parent and (some s.parent.failed or no s.parent.stormInfo)) implies {
+    (some s.parent and no majorityVote[s.parent]) implies {
       (s.parentBeats < TIMEOUT)
         implies s.parentBeats' = add[s.parentBeats, 1]
       (s.parentBeats >= TIMEOUT)
@@ -93,9 +128,9 @@ pred updateMissedBeats {
     (no s.parent) implies s.parentBeats' = s.parentBeats
 
     -- Backup beat: reset if backup is alive AND has stormInfo
-    (some s.backup and no s.backup.failed and some s.backup.stormInfo) implies
+    (some s.backup and some majorityVote[Station.(s.backup)]) implies
       s.backupBeats' = 0
-    (some s.backup and (some s.backup.failed or no s.backup.stormInfo)) implies {
+    (some s.backup and no majorityVote[Station.(s.backup)]) implies {
       (s.backupBeats < TIMEOUT)
         implies s.backupBeats' = add[s.backupBeats, 1]
       (s.backupBeats >= TIMEOUT)
@@ -110,23 +145,30 @@ pred updateMissedBeats {
   }
 }
 
-fun liveSource[s: Station]: lone Station {
-  (parentLive[s]) => s.parent
-  else (not parentLive[s] and backupLive[s]) => s.backup
-  else none
+fun liveSource[s: Station]: set Station {
+  { src: Station | 
+    -- Case 1: Parent is live, so the source must be in the parent set
+    (parentLive[s] => src in s.parent) 
+    and
+    -- Case 2: Parent is NOT live but backup IS live, so source is the backup mapping
+    ((no s.parent or not parentLive[s]) and backupLive[s] => src in Station.(s.backup))
+    and
+    -- Case 3: If neither is live, no station should satisfy the conditions (returns none)
+    ((not parentLive[s] and not backupLive[s]) => no src)
+  }
 }
 
 -- ── Failsafe stub ─────────────────────────────────────────────────────────────
 pred failsafe[s: Station] {
   -- Case 1: Backup is alive and has info → reroute to backup
-  (backupLive[s] and some s.backup.stormInfo and no s.backup.failed) implies { -- Parent went silent but backup is healthy, so the station reroutes. 
-    s.stormInfo' = s.backup.stormInfo
-    s.passStormComing = s.backup 
+  (backupLive[s] and some majorityVote[Station.(s.backup)]) implies { -- Parent went silent but backup is healthy, so the station reroutes. 
+    s.stormInfo' = majorityVote[Station.(s.backup)]
+    s.passStormComing = Station.(s.backup)
     no s.lostOriginator'
   }
 
   -- Case 2: Backup exists but also has no info or is failed → freeze, stay lost
-  (some s.backup and (some s.backup.failed or no s.backup.stormInfo)) implies { -- backup exists but is also unreachable or uninformed
+  (some s.backup and no majorityVote[Station.(s.backup)]) implies { -- backup exists but is also unreachable or uninformed
     s.stormInfo' = s.stormInfo
     one s.lostOriginator'
   }
@@ -162,16 +204,16 @@ pred defineStormEdges {
       let src = liveSource[s] | {
 
         -- Normal: live source is alive and has info
-          (some src and no src.failed and some src.stormInfo) implies {
-            s.stormInfo'     = src.stormInfo
-            no s.lostOriginator'
-          }
+        (some src and some majorityVote[src]) implies {
+          s.stormInfo'     = majorityVote[src]
+          no s.lostOriginator'
+        }
 
-          -- Waiting: live source exists but failed or no info yet
-          (some src and (some src.failed or no src.stormInfo)) implies {
-            s.stormInfo'     = s.stormInfo
-            no s.lostOriginator'
-          }
+        -- Waiting: live source exists but failed or no info yet
+        (some src and no majorityVote[src]) implies {
+          s.stormInfo'     = s.stormInfo
+          no s.lostOriginator'
+        }
 
         -- Isolated: no live source
         no src implies {
@@ -208,6 +250,9 @@ run {
     some s2.originatesInfo
   }
   some s: Station | some s.originatesInfo and eventually some s.failed
-  -- Weaker: just check the counter gets above 0
+  
+  -- NEW: Ensure at least one node is actively Byzantine
+  some s: Station | some s.isByzantine 
+  
   some s: Station | eventually s.parentBeats > 0
 } for exactly 7 Station, 5 Int

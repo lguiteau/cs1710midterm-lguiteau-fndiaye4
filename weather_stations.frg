@@ -181,11 +181,28 @@ pred failsafe[s: Station] {
 }
 
 pred defineStormEdges {
-  -- Originators: stormInfo unchanged, but failed ones broadcast nothing
-  all s: Station | (some s.originatesInfo) implies {
-    s.stormInfo'      = s.stormInfo   -- internal value stays
+  // -- Originators: stormInfo unchanged, but failed ones broadcast nothing
+  // all s: Station | (some s.originatesInfo) implies {
+  //   s.stormInfo'      = s.stormInfo   -- internal value stays
+  //   s.passStormComing = none
+  //   no s.lostOriginator'
+  // }
+
+  -- FIX 1: Split originator block into healthy vs failed
+  -- Healthy originators leave failed' unconstrained (nondeterministic failure)
+  all s: Station | (some s.originatesInfo and no s.failed) implies {
+    s.stormInfo'      = s.stormInfo
     s.passStormComing = none
     no s.lostOriginator'
+    -- failed' intentionally unconstrained: allows failure mid-trace
+  }
+
+  -- Failed originators stay failed and frozen
+  all s: Station | (some s.originatesInfo and some s.failed) implies {
+    s.stormInfo'      = s.stormInfo
+    s.passStormComing = none
+    no s.lostOriginator'
+    some s.failed'
   }
 
   failuresSticky
@@ -219,15 +236,29 @@ pred defineStormEdges {
         no src implies {
           s.stormInfo' = s.stormInfo
 
-          -- Originator timed out → call failsafe
-          (some s.parent and some s.parent.originatesInfo
-           and s.parentBeats >= TIMEOUT) implies {
+          // -- Originator timed out → call failsafe
+          // (some s.parent and some s.parent.originatesInfo
+          //  and s.parentBeats >= TIMEOUT) implies {
+          //   one s.lostOriginator'
+          //   failsafe[s]
+          // }
+
+          // -- Regular node timed out → no escalation
+          // (some s.parent and no s.parent.originatesInfo) implies {
+          //   no s.lostOriginator'
+          // }
+
+
+           -- FIX 2: any timeout triggers lostOriginator + failsafe
+          -- originator-specific distinction preserved in comment for later
+          (s.parentBeats >= TIMEOUT) implies {
             one s.lostOriginator'
             failsafe[s]
+            -- NOTE: to restore originator distinction later, check:
+            -- some (s.parent & {p: Station | some p.originatesInfo})
           }
 
-          -- Regular node timed out → no escalation
-          (some s.parent and no s.parent.originatesInfo) implies {
+          (s.parentBeats < TIMEOUT) implies {
             no s.lostOriginator'
           }
         }
@@ -241,6 +272,8 @@ pred traces {
   init
   always defineStormEdges
   boundedFailures
+  -- FIX 3: force failure to occur during the trace
+  eventually (some s: Station | some s.originatesInfo and some s.failed)
 }
 
 run {

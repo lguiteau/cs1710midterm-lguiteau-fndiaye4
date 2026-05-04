@@ -1,5 +1,6 @@
 #lang forge/temporal
-option run_sterling "layout.cnd"
+// option run_sterling "layout.cnd"
+option run_sterling "weather_stations.js"
 
 option min_tracelength 2
 option max_tracelength 15
@@ -21,8 +22,8 @@ sig Station {
   isByzantine:        lone StormBool  -- NEW: Flag for Byzantine nodes
 }
 
-one sig Georgetown, Philadelphia, NewYork,
-        NewOrleans, Denver, LosAngeles, Dallas extends Station {}
+// one sig Georgetown, Philadelphia, NewYork,
+//         NewOrleans, Denver, LosAngeles, Dallas extends Station {}
 
 fun TIMEOUT: Int { 3 }
 

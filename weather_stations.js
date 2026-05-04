@@ -1,14 +1,16 @@
-const d3 = require('d3');
+// weather_stations.js
 
-// Clear any previous renders to prevent ghosting
+// 1. D3 is globally injected by Sterling. DO NOT use require('d3').
+// Clear any previous renders to prevent ghosting.
 d3.selectAll('svg > *').remove();
 
 // ---------------------------------------------------------------
-// 1. ROBUST STATE EXTRACTION (Modeled after Game of Life script)
-// Extracts all trace states upfront.
+// ROBUST STATE EXTRACTION
 // ---------------------------------------------------------------
-const CEN_X = 130, CEN_Y = 180, RAD = 95;
-const UI_X = 260, UI_Y = 15, UI_W = 250;
+// Layout Calculation
+const CEN_X = 180, CEN_Y = 180, RAD = 120;
+const CTRL_X = 350, CTRL_Y = 15, CTRL_W = 150;
+const LEG_X = 14, LEG_Y = 380, LEG_W = 500;
 
 function getAllStates() {
   const out = [];
@@ -17,7 +19,6 @@ function getAllStates() {
   const stationAtoms = instances[0].signature("Station").atoms();
   const stations = stationAtoms.map(a => String(a.id ? a.id() : a).trim());
 
-  // Fixed orbital positions for stations
   const poses = {};
   const degs = (Math.PI * 2) / stations.length;
   stations.forEach((sId, i) => {
@@ -30,7 +31,7 @@ function getAllStates() {
   instances.forEach((inst) => {
     let stateData = { nodes: {}, edges: [] };
 
-    // Baseline Nodes
+    // Baseline nodes
     stations.forEach(sId => {
       stateData.nodes[sId] = {
         id: sId,
@@ -47,7 +48,6 @@ function getAllStates() {
 
     const getStr = a => String(a.id ? a.id() : a).trim();
 
-    // Safe field extractors
     const process2 = (fieldStr, cb) => {
       try {
         let f = inst.field(fieldStr);
@@ -72,7 +72,7 @@ function getAllStates() {
       } catch (e) { }
     };
 
-    // Populate node states
+    // Extract Node States
     process2("failed", src => { if (stateData.nodes[src]) stateData.nodes[src].isFailed = true; });
     process2("isByzantine", src => { if (stateData.nodes[src]) stateData.nodes[src].isByzantine = true; });
     process2("stormInfo", (src, tgt) => {
@@ -85,16 +85,30 @@ function getAllStates() {
       if (stateData.nodes[src]) stateData.nodes[src].backupBeats = parseInt(tgt.replace(/[^0-9-]/g, "")) || 0;
     });
 
-    // Populate edge states with strict verification
+    // 1. First, map out which links are actively passing info this tick
+    const activePasses = new Set();
+    process2("passStormInfo", (src, tgt) => {
+      activePasses.add(`${src}->${tgt}`);
+    });
+
+    // Safely add edge
     const addEdge = (src, tgt, type) => {
-      if (poses[src] && poses[tgt]) {
+      if (stateData.nodes[src] && stateData.nodes[tgt]) {
         stateData.edges.push({ source: src, target: tgt, type: type });
       }
     };
 
-    process2("parent", (src, tgt) => addEdge(src, tgt, "parent"));
-    process2("passStormComing", (src, tgt) => addEdge(src, tgt, "pass"));
-    process3("backup", (src, parent, tgt) => addEdge(src, tgt, "backup"));
+    // 2. Generate parent edges and style based on activePasses lookup
+    process2("parent", (src, tgt) => {
+      const isActive = activePasses.has(`${src}->${tgt}`);
+      addEdge(src, tgt, isActive ? "parent-active" : "parent-inactive");
+    });
+
+    // 3. Generate backup edges and style based on activePasses lookup
+    process3("backup", (src, parent, tgt) => {
+      const isActive = activePasses.has(`${src}->${tgt}`);
+      addEdge(src, tgt, isActive ? "backup-active" : "backup-inactive");
+    });
 
     out.push(stateData);
   });
@@ -107,11 +121,10 @@ const nStates = states.length || 1;
 let curIdx = 0;
 
 // ---------------------------------------------------------------
-// 2. SETUP SVG & LAYERS
+// SETUP SVG & LAYERS
 // ---------------------------------------------------------------
 const root = d3.select(svg);
 
-// Top-left Native SVG Title
 const title = root.append('text')
   .attr('x', 15).attr('y', 25)
   .style('font-size', '14px').style('font-weight', 'bold').style('fill', '#222');
@@ -120,58 +133,67 @@ const defs = root.append("defs");
 const addMarker = (id, color, scale) => {
   defs.append("marker")
     .attr("id", id).attr("viewBox", "0 -5 10 10")
-    .attr("refX", 22) // Offset exactly to edge of symbol
+    .attr("refX", 22)
     .attr("refY", 0)
     .attr("markerWidth", 6 * scale).attr("markerHeight", 6 * scale)
     .attr("orient", "auto")
     .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", color);
 };
-addMarker("arrow-parent", "#999", 1);
-addMarker("arrow-backup", "#6495ED", 1);
-addMarker("arrow-pass", "#FF8C00", 1.2);
+
+// Create the 4 distinct markers
+addMarker("arrow-parent-inactive", "#999999", 1);
+addMarker("arrow-parent-active", "#2ca02c", 1.3);
+addMarker("arrow-backup-inactive", "#6495ED", 1);
+addMarker("arrow-backup-active", "#FF8C00", 1.3);
 
 const gEdges = root.append("g");
 const gNodes = root.append("g");
 
 // ---------------------------------------------------------------
-// 3. CLEAN UI PANEL (Strictly Side-by-Side)
+// UI PANELS
 // ---------------------------------------------------------------
-const fo = root.append('foreignObject')
-  .attr('x', UI_X).attr('y', UI_Y).attr('width', UI_W).attr('height', 500);
+const foControls = root.append('foreignObject')
+  .attr('x', CTRL_X).attr('y', CTRL_Y).attr('width', CTRL_W).attr('height', 50);
 
-const container = fo.append('xhtml:div')
-  .style('font-family', 'sans-serif').style('font-size', '12px')
-  .style('background', '#f8f9fa').style('border', '1px solid #ddd')
-  .style('border-radius', '6px').style('padding', '12px').style('box-sizing', 'border-box');
-
-const btnRow = container.append('xhtml:div')
-  .style('margin-bottom', '15px').style('display', 'flex').style('gap', '6px');
+const btnRow = foControls.append('xhtml:div')
+  .style('display', 'flex').style('gap', '6px').style('font-family', 'sans-serif');
 const prevBtn = btnRow.append('xhtml:button').text('\u2190 Prev').style('cursor', 'pointer').style('flex', '1').style('padding', '6px');
 const nextBtn = btnRow.append('xhtml:button').text('Next \u2192').style('cursor', 'pointer').style('flex', '1').style('padding', '6px');
 
-const legend = container.append('xhtml:div');
-legend.append('xhtml:div').text('Node Status').style('font-weight', 'bold').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc').style('padding-bottom', '4px');
+const foLegend = root.append('foreignObject')
+  .attr('x', LEG_X).attr('y', LEG_Y).attr('width', LEG_W).attr('height', 160);
 
-const mkItem = (icon, text) => {
-  const d = legend.append('xhtml:div').style('margin-bottom', '5px').style('display', 'flex').style('align-items', 'center');
-  d.append('xhtml:span').style('width', '24px').style('text-align', 'center').html(icon);
+const legendContainer = foLegend.append('xhtml:div')
+  .style('font-family', 'sans-serif').style('font-size', '12px')
+  .style('background', '#f8f9fa').style('border', '1px solid #ddd')
+  .style('border-radius', '6px').style('padding', '12px').style('box-sizing', 'border-box')
+  .style('display', 'flex').style('justify-content', 'space-around');
+
+const col1 = legendContainer.append('xhtml:div');
+col1.append('xhtml:div').text('Node Status').style('font-weight', 'bold').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc');
+const col2 = legendContainer.append('xhtml:div');
+col2.append('xhtml:div').text('Network Edges').style('font-weight', 'bold').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc');
+
+const mkItem = (parent, icon, text) => {
+  const d = parent.append('xhtml:div').style('margin-bottom', '6px').style('display', 'flex').style('align-items', 'center');
+  d.append('xhtml:span').style('width', '28px').style('text-align', 'center').html(icon);
   d.append('xhtml:span').text(text);
 };
 
-mkItem('🟢', 'StormTrue');
-mkItem('🔴', 'StormFalse');
-mkItem('⚪', 'Waiting');
-mkItem('⚫', 'Failed/Silent');
-mkItem('💠', 'Byzantine Node');
-mkItem('✖️', 'Failed Node');
+mkItem(col1, '🟢', 'StormTrue');
+mkItem(col1, '🔴', 'StormFalse');
+mkItem(col1, '⚪', 'Waiting');
+mkItem(col1, '💠', 'Byzantine Node');
+mkItem(col1, '✖️', 'Failed/Silent Node');
 
-legend.append('xhtml:div').text('Network Edges').style('font-weight', 'bold').style('margin-top', '12px').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc').style('padding-bottom', '4px');
-mkItem('<div style="width:20px;height:2px;background:#999;"></div>', 'Parent Link');
-mkItem('<div style="width:20px;height:2px;border-top:2px dashed #6495ED;"></div>', 'Backup Link');
-mkItem('<div style="width:20px;height:4px;background:#FF8C00;"></div>', 'PassStormComing');
+// The 4 dynamic edge states
+mkItem(col2, '<div style="width:20px;height:2px;background:#999999;"></div>', 'Parent (Not in use)');
+mkItem(col2, '<div style="width:20px;height:4px;background:#2ca02c;"></div>', 'Parent (Passing Info)');
+mkItem(col2, '<div style="width:20px;height:2px;border-top:2px dashed #6495ED;"></div>', 'Backup (Not in use)');
+mkItem(col2, '<div style="width:20px;height:4px;border-top:4px dashed #FF8C00;"></div>', 'Backup (Passing Info)');
 
 // ---------------------------------------------------------------
-// 4. RENDER LOOP (Proper Enter/Merge/Exit D3 Pattern)
+// RENDER LOOP
 // ---------------------------------------------------------------
 function render(idx) {
   curIdx = Math.max(0, Math.min(nStates - 1, idx));
@@ -179,24 +201,27 @@ function render(idx) {
 
   title.text(`Weather Stations  ·  State ${curIdx + 1} / ${nStates}`);
 
-  // --- Draw Edges ---
   const edgeData = state ? state.edges : [];
   const link = gEdges.selectAll("line").data(edgeData, d => `${d.source}-${d.target}-${d.type}`);
 
   link.enter().append("line")
     .merge(link)
-    .attr("x1", d => state.nodes[d.source].x)
-    .attr("y1", d => state.nodes[d.source].y)
-    .attr("x2", d => state.nodes[d.target].x)
-    .attr("y2", d => state.nodes[d.target].y)
-    .attr("stroke", d => d.type === 'parent' ? '#999' : d.type === 'backup' ? '#6495ED' : '#FF8C00')
-    .attr("stroke-width", d => d.type === 'pass' ? 3 : 1.5)
-    .attr("stroke-dasharray", d => d.type === 'backup' ? "5,3" : "none")
+    .attr("x1", d => state.nodes[d.source] ? state.nodes[d.source].x : 0)
+    .attr("y1", d => state.nodes[d.source] ? state.nodes[d.source].y : 0)
+    .attr("x2", d => state.nodes[d.target] ? state.nodes[d.target].x : 0)
+    .attr("y2", d => state.nodes[d.target] ? state.nodes[d.target].y : 0)
+    .attr("stroke", d => {
+      if (d.type === 'parent-inactive') return '#999999';
+      if (d.type === 'parent-active') return '#2ca02c';
+      if (d.type === 'backup-inactive') return '#6495ED';
+      if (d.type === 'backup-active') return '#FF8C00';
+    })
+    .attr("stroke-width", d => d.type.includes('active') ? 3 : 1.5)
+    .attr("stroke-dasharray", d => d.type.includes('backup') ? "5,3" : "none")
     .attr("marker-end", d => `url(#arrow-${d.type})`);
 
   link.exit().remove();
 
-  // --- Draw Nodes ---
   const nodeData = state ? Object.values(state.nodes) : [];
   const nodeBind = gNodes.selectAll("g.node").data(nodeData, d => d.id);
 
@@ -216,6 +241,7 @@ function render(idx) {
       else if (d.isByzantine) sym = d3.symbolDiamond;
       return d3.symbol().type(sym).size(280)();
     })
+    .attr("transform", d => d.isFailed ? "rotate(45)" : "rotate(0)")
     .attr("fill", d => {
       if (d.isFailed) return "#333";
       if (d.stormInfo === "true") return "#2ca02c";
@@ -231,7 +257,6 @@ function render(idx) {
 
   nodeBind.exit().remove();
 
-  // --- Update UI ---
   prevBtn.property('disabled', curIdx === 0);
   nextBtn.property('disabled', curIdx === nStates - 1);
 }

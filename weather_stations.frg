@@ -2,24 +2,24 @@
 // option run_sterling "layout.cnd"
 option run_sterling "weather_stations.js"
 
-option min_tracelength 2
+option min_tracelength 5
 option max_tracelength 15
 
 abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
 
 sig Station {
-  parent:          set Station,                -- CHANGED: Now a set
-  backup:          pfunc Station -> Station,    -- CHANGED: Partial function mapping a parent to its backup
-  passStormComing: set Station,                -- CHANGED: Now a set
+  parent:          set Station,                -- set of direct parents
+  backup:          pfunc Station -> Station,   -- Partial function mapping a parent to its backup
+  passStormInfo:   set Station,                -- set of stations passing info
   originatesInfo:  lone StormBool,
 
   var stormInfo:      lone StormBool,
   var parentBeats:    one Int,
   var backupBeats:    one Int,
   var lostOriginator: lone StormBool,
-  var failed:         lone StormBool, -- NEW: station has gone silent
-  isByzantine:        lone StormBool  -- NEW: Flag for Byzantine nodes
+  var failed:         lone StormBool, -- station has gone silent
+  isByzantine:        lone StormBool  -- station is Byzantine
 }
 
 // one sig Georgetown, Philadelphia, NewYork,
@@ -44,7 +44,7 @@ pred backupLive[s: Station] {
 //   (some s.failed) => none else s.stormInfo
 // }
 
--- NEW: What a station actually broadcasts this tick (Handles Byzantine)
+-- what a station actually broadcasts this tick
 fun broadcasts[s: Station]: lone StormBool {
   { b: StormBool | 
     -- Condition 1: Station must not be failed
@@ -61,7 +61,7 @@ fun broadcasts[s: Station]: lone StormBool {
   }
 }
 
--- NEW: Determines the majority consensus from a given set of stations
+-- determines the majority consensus from a given set of stations
 fun majorityVote[group: set Station]: lone StormBool {
   let tVotes = {p: group | broadcasts[p] = StormTrue},
       fVotes = {p: group | broadcasts[p] = StormFalse} |
@@ -73,9 +73,11 @@ fun majorityVote[group: set Station]: lone StormBool {
 pred validStations {
   all s: Station | {
     s not in s.parent
+    s not in Station.(s.backup) -- a node cannot be its own backup mapping output
     (some s.originatesInfo) implies no s.parent
     (no s.originatesInfo)   implies #(s.parent) >= 3
-    -- NEW: ALWAYS true majority (odd number). Max parents is 6, so valid odds are 3 or 5.
+    -- always true majority (odd number)
+    -- max parents is 6, so valid odds are 3 or 5
     (no s.originatesInfo)   implies (#(s.parent) = 3 or #(s.parent) = 5) 
     (no s.originatesInfo)   implies {
       some orig: Station | {
@@ -84,12 +86,24 @@ pred validStations {
       }
     }
     
-    -- NEW constraints for the backup partial function
+    -- every child node has at least one backup assigned to one of its parents
+    (some s.parent) implies {
+      some p: s.parent | some s.backup[p]
+    }
+    
+    -- constraints for the backup partial function
     all p: Station | some s.backup[p] implies p in s.parent
     all p: s.parent | some s.backup[p] implies {
       s.backup[p] != s
-      s.backup[p] not in s.parent
+      s.backup[p] not in s.parent -- parent cannot be a backup for any parent of that child
     }
+  }
+
+  -- nodes cannot be parents/backups to each other
+  all disj s1, s2: Station | {
+    s1 in s2.parent implies s2 not in s1.parent
+    s1 in Station.(s2.backup) implies s2 not in Station.(s1.backup)
+    s1 in s2.parent implies s2 not in Station.(s1.backup)
   }
 }
 
@@ -104,12 +118,12 @@ pred init {
   }
 }
 
--- Failures are sticky: once failed, always failed
+-- failures are sticky: once failed, always failed
 pred failuresSticky {
   all s: Station | some s.failed implies some s.failed'
 }
 
--- At most one originator can fail (keeps traces readable)
+-- at most one originator can fail (keeps traces readable)
 pred boundedFailures {
   lone s: Station | some s.originatesInfo and some s.failed
 }
@@ -117,7 +131,7 @@ pred boundedFailures {
 pred updateMissedBeats {
   all s: Station | (no s.originatesInfo) implies {
 
-    -- Parent beat: reset if parent is alive AND has stormInfo
+    -- parent beat: reset if parent is alive AND has stormInfo
     (some s.parent and some majorityVote[s.parent]) implies
       s.parentBeats' = 0
     (some s.parent and no majorityVote[s.parent]) implies {
@@ -128,7 +142,7 @@ pred updateMissedBeats {
     }
     (no s.parent) implies s.parentBeats' = s.parentBeats
 
-    -- Backup beat: reset if backup is alive AND has stormInfo
+    -- backup beat: reset if backup is alive AND has stormInfo
     (some s.backup and some majorityVote[Station.(s.backup)]) implies
       s.backupBeats' = 0
     (some s.backup and no majorityVote[Station.(s.backup)]) implies {
@@ -164,7 +178,7 @@ pred failsafe[s: Station] {
   -- Case 1: Backup is alive and has info → reroute to backup
   (backupLive[s] and some majorityVote[Station.(s.backup)]) implies { -- Parent went silent but backup is healthy, so the station reroutes. 
     s.stormInfo' = majorityVote[Station.(s.backup)]
-    s.passStormComing = Station.(s.backup)
+    s.passStormInfo = Station.(s.backup)
     no s.lostOriginator'
   }
 
@@ -185,23 +199,23 @@ pred defineStormEdges {
   // -- Originators: stormInfo unchanged, but failed ones broadcast nothing
   // all s: Station | (some s.originatesInfo) implies {
   //   s.stormInfo'      = s.stormInfo   -- internal value stays
-  //   s.passStormComing = none
+  //   s.passStormInfo = none
   //   no s.lostOriginator'
   // }
 
-  -- FIX 1: Split originator block into healthy vs failed
-  -- Healthy originators leave failed' unconstrained (nondeterministic failure)
+  -- split originator block into healthy vs failed
+  -- healthy originators leave failed' unconstrained (nondeterministic failure)
   all s: Station | (some s.originatesInfo and no s.failed) implies {
     s.stormInfo'      = s.stormInfo
-    s.passStormComing = none
+    s.passStormInfo = none
     no s.lostOriginator'
     -- failed' intentionally unconstrained: allows failure mid-trace
   }
 
-  -- Failed originators stay failed and frozen
+  -- failed originators stay failed and frozen
   all s: Station | (some s.originatesInfo and some s.failed) implies {
     s.stormInfo'      = s.stormInfo
-    s.passStormComing = none
+    s.passStormInfo = none
     no s.lostOriginator'
     some s.failed'
   }
@@ -210,7 +224,7 @@ pred defineStormEdges {
   updateMissedBeats
 
   all s: Station | (no s.originatesInfo) implies {
-    s.passStormComing = liveSource[s]
+    s.passStormInfo = liveSource[s]
 
     -- failed non-originators freeze too
     some s.failed implies {
@@ -273,7 +287,7 @@ pred traces {
   init
   always defineStormEdges
   boundedFailures
-  -- FIX 3: force failure to occur during the trace
+  -- force failure to occur during the trace
   eventually (some s: Station | some s.originatesInfo and some s.failed)
 }
 
@@ -285,8 +299,8 @@ run {
   }
   some s: Station | some s.originatesInfo and eventually some s.failed
   
-  -- NEW: Ensure at least one node is actively Byzantine
+  -- at least one node is actively Byzantine
   some s: Station | some s.isByzantine 
   
   some s: Station | eventually s.parentBeats > 0
-} for exactly 7 Station, 5 Int
+} for exactly 10 Station, 5 Int

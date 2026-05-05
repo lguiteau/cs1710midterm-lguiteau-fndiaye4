@@ -291,16 +291,20 @@ pred traces {
   eventually (some s: Station | some s.originatesInfo and some s.failed)
 }
 
+// run {
+//   traces
+//   some disj s1, s2: Station | {
+//     some s1.originatesInfo
+//     some s2.originatesInfo
+//   }
+//   some s: Station | some s.originatesInfo and eventually some s.failed
+  
+//   -- at least one node is actively Byzantine
+//   some s: Station | some s.isByzantine 
+  
+//   some s: Station | eventually s.parentBeats > 0
+// } for exactly 10 Station, 5 Int
 run {
   traces
-  some disj s1, s2: Station | {
-    some s1.originatesInfo
-    some s2.originatesInfo
-  }
-  some s: Station | some s.originatesInfo and eventually some s.failed
-  
-  -- at least one node is actively Byzantine
-  some s: Station | some s.isByzantine 
-  
-  some s: Station | eventually s.parentBeats > 0
+  some s: Station | eventually s.parentBeats = 3
 } for exactly 10 Station, 5 Int

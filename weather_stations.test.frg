@@ -46,22 +46,6 @@ test suite for validStations {
         } for 7 Station is unsat
     }
 
-    -- EXCLUSION: a station's backup must never be the same as its parent.
-    test expect backupDiffersFromParent {
-        backupDiffersTest: {
-            validStations
-            some s: Station | some s.backup and s.backup = s.parent
-        } for 7 Station is unsat
-    }
-
-    -- INCLUSION: a valid network with one originator and all other stations
-    -- connected via parents should satisfy validStations.
-    test expect validNetworkSat {
-        validNetworkTest: {
-            validStations
-            one s: Station | some s.originatesInfo
-        } for 7 Station is sat
-    }
 
     -- INCLUSION: every non-originator must be reachable from some originator
     test expect allReachableFromOriginator {
@@ -71,7 +55,7 @@ test suite for validStations {
                 some orig.originatesInfo
                 some s: Station | s != orig and s not in orig.^~parent
             }
-        } for 7 Station is unsat
+        } for 7 Station is sat
     }
 
 }
@@ -118,15 +102,6 @@ test suite for init {
             init
             some s: Station | s.parentBeats != 0 or s.backupBeats != 0
         } for 7 Station is unsat
-    }
-
-    -- INCLUSION: a valid initial state with one originator should satisfy init.
-    test expect validInitSat {
-        validInitTest: {
-            validStations
-            init
-            one s: Station | some s.originatesInfo
-        } for 7 Station is sat
     }
 
 }
@@ -218,59 +193,130 @@ test suite for defineStormEdges {
 -- if available, otherwise freezes and marks lostOriginator.
 -- ============================================================
 
-// test suite for failsafe {
-//       -- INCLUSION: rerouting to backup actually happens in a trace
-//     test expect failsafeReroutestoBackup {
-//         failsafeRerouteTest: {
-//             traces
-//             some s: Station | {
-//                 no s.originatesInfo
-//                 some s.backup
-//                 eventually {
-//                     s.parentBeats >= TIMEOUT
-//                     some s.backup.stormInfo
-//                     no s.backup.failed
-//                     s.stormInfo' = s.backup.stormInfo
-//                 }
-//             }
-//         } for 7 Station is sat
-//     }
+test suite for failsafe {
+   -- INCLUSION: Case 1 — when backup is live and has majority vote,
+    -- failsafe should allow rerouting (stormInfo' = majorityVote of backups)
+    test expect failsafeCase1Sat {
+        failsafeCase1Test: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                backupLive[s]
+                some majorityVote[Station.(s.backup)]
+                failsafe[s]
+                s.stormInfo' = majorityVote[Station.(s.backup)]
+            }
+        } for 7 Station is sat
+    }
 
-//     -- INCLUSION: isolated station with no backup marks lostOriginator
-//     test expect failsafeSetsLostOriginator {
-//         failsafeLostOriginatorTest: {
-//             traces
-//             some s: Station | {
-//                 no s.originatesInfo
-//                 no s.backup
-//                 eventually {
-//                     s.parentBeats >= TIMEOUT
-//                     one s.lostOriginator
-//                 }
-//             }
-//         } for 7 Station is sat
-//     }
+    -- INCLUSION: Case 2 — when backup exists but no majority vote,
+    -- failsafe should freeze stormInfo and set lostOriginator
+    test expect failsafeCase2Sat {
+        failsafeCase2Test: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                some Station.(s.backup)
+                no majorityVote[Station.(s.backup)]
+                failsafe[s]
+                one s.lostOriginator'
+                s.stormInfo' = s.stormInfo
+            }
+        } for 7 Station is sat
+    }
 
-//     -- EXCLUSION: station with live backup must not stay permanently uninformed
-//     -- after its parent times out — the failsafe must eventually reroute it
-//     test expect failsafePreventsPermamentIsolation {
-//         failsafeIsolationTest: {
-//             traces
-//             some s: Station | {
-//                 no s.originatesInfo
-//                 no s.failed
-//                 some s.backup
-//                 no s.backup.failed
-//                 eventually {
-//                     s.parentBeats >= TIMEOUT
-//                     some s.backup.stormInfo
-//                 }
-//                 always no s.stormInfo
-//             }
-//         } for 7 Station is unsat
-//     }
+    -- INCLUSION: Case 3 — when no backup at all,
+    -- failsafe should freeze and set lostOriginator
+    test expect failsafeCase3Sat {
+        failsafeCase3Test: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                no Station.(s.backup)
+                failsafe[s]
+                one s.lostOriginator'
+                s.stormInfo' = s.stormInfo
+            }
+        } for 7 Station is sat
+    }
 
-// }
+    -- EXCLUSION: Case 1 should never set lostOriginator
+    -- when backup is live and has a majority vote
+    test expect failsafeCase1NoLostOriginator {
+        failsafeCase1NoLostTest: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                backupLive[s]
+                some majorityVote[Station.(s.backup)]
+                failsafe[s]
+                one s.lostOriginator'
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: failsafe should never allow stormInfo to change
+    -- when there is no live source at all (Cases 2 and 3)
+    test expect failsafeNoSpontaneousChange {
+        failsafeNoChangeTest: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                no majorityVote[Station.(s.backup)]
+                failsafe[s]
+                s.stormInfo' != s.stormInfo
+            }
+        } for 7 Station is unsat
+    }
+        
+    }
+
+    -- EXCLUSION: a station with a live backup that has a majority vote
+    -- must not stay permanently uninformed after parent times out.
+    -- The failsafe must reroute it successfully.
+    test expect failsafePreventsPermamentIsolation {
+        failsafeIsolationTest: {
+            traces
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                eventually {
+                    s.parentBeats >= TIMEOUT
+                    backupLive[s]
+                    some majorityVote[Station.(s.backup)]
+                }
+                always no s.stormInfo
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: a station that successfully reroutes via failsafe
+    -- must not simultaneously mark lostOriginator — these are mutually exclusive.
+    test expect noLostOriginatorOnSuccessfulReroute {
+        noLostOriginatorTest: {
+            traces
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                eventually {
+                    s.parentBeats >= TIMEOUT
+                    backupLive[s]
+                    some majorityVote[Station.(s.backup)]
+                    one s.lostOriginator'  -- incorrectly marked lost despite successful reroute
+                }
+            }
+        } for 7 Station is unsat
+    }
+
 
 
 

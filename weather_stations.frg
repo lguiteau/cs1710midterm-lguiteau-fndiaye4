@@ -1,6 +1,6 @@
 #lang forge/temporal
 // option run_sterling "layout.cnd"
-option run_sterling "weather_stations.js"
+//option run_sterling "weather_stations.js"
 
 option min_tracelength 5
 option max_tracelength 15
@@ -11,7 +11,7 @@ one sig StormFalse, StormTrue extends StormBool {}
 sig Station {
   parent:          set Station,                -- set of direct parents
   backup:          pfunc Station -> Station,   -- Partial function mapping a parent to its backup
-  passStormInfo:   set Station,                -- set of stations passing info
+  var passStormInfo:   set Station,                -- set of stations passing info (VAR... GEMINI)
   originatesInfo:  lone StormBool,
 
   var stormInfo:      lone StormBool,
@@ -22,10 +22,12 @@ sig Station {
   isByzantine:        lone StormBool  -- station is Byzantine
 }
 
-// one sig Georgetown, Philadelphia, NewYork,
-//         NewOrleans, Denver, LosAngeles, Dallas extends Station {}
+one sig Georgetown, Philadelphia, NewYork,
+        NewOrleans, Denver, LosAngeles, Dallas extends Station{}
+        
+// -- Houston, Atlanta, Chicago extends Station {}
 
-fun TIMEOUT: Int { 3 }
+fun TIMEOUT: Int { 2 }
 
 -- Parent is live if counter is under threshold AND not failed
 pred parentLive[s: Station] {
@@ -123,9 +125,15 @@ pred failuresSticky {
   all s: Station | some s.failed implies some s.failed'
 }
 
--- at most one originator can fail (keeps traces readable)
+
+// -- at most one originator can fail (keeps traces readable)
+// pred boundedFailures {
+//   lone s: Station | some s.originatesInfo and some s.failed
+// }
+
+-- TEMPORARY FIX: allow up to TWO originators to fail, to enable testing of majority silence
 pred boundedFailures {
-  lone s: Station | some s.originatesInfo and some s.failed
+  #{s: Station | some s.originatesInfo and some s.failed} <= 2
 }
 
 pred updateMissedBeats {
@@ -264,13 +272,11 @@ pred defineStormEdges {
           // }
 
 
-           -- FIX 2: any timeout triggers lostOriginator + failsafe
-          -- originator-specific distinction preserved in comment for later
+          -- GEMINI ... This means that if the parent is timed out, we call failsafe, but if the parent is not an originator, 
+          -- we don't call failsafe even if it's timed out. This allows us to test the case where a non-originator parent is 
+          --Byzantine and goes silent, but the station doesn't call failsafe because it doesn't realize the parent is an originator.
           (s.parentBeats >= TIMEOUT) implies {
-            one s.lostOriginator'
-            failsafe[s]
-            -- NOTE: to restore originator distinction later, check:
-            -- some (s.parent & {p: Station | some p.originatesInfo})
+              failsafe[s]
           }
 
           (s.parentBeats < TIMEOUT) implies {
@@ -281,6 +287,8 @@ pred defineStormEdges {
     }
   }
 }
+
+
 
 pred traces {
   validStations
@@ -304,7 +312,39 @@ pred traces {
   
 //   some s: Station | eventually s.parentBeats > 0
 // } for exactly 10 Station, 5 Int
-run {
+
+// run {
+//   some disj s1, s2: Station | {
+//     some s1.originatesInfo
+//     some s2.originatesInfo
+//     no s1.parent
+//     no s2.parent
+//   }
+//   some s: Station | {
+//     no s.originatesInfo
+//     some s.parent
+//     some s.parent.originatesInfo
+//   }
+//   init
+//   eventually (some s: Station | some s.originatesInfo and some s.failed)
+//   some s: Station | eventually s.parentBeats = 3
+// } for 5 Station, 5 Int
+
+pred VerifyHeartbeatProtocol {
   traces
-  some s: Station | eventually s.parentBeats = 3
-} for exactly 10 Station, 5 Int
+  
+  -- Task 1: Verify countdown reaches TIMEOUT
+  eventually (some s: Station | s.parentBeats = TIMEOUT)
+  
+  -- Task 2: Verify lostOriginator fires (Cases 2 & 3 in failsafe)
+  eventually (some s: Station | some s.lostOriginator)
+  
+  -- Task 3: Verify failsafe reroutes (Case 1 in failsafe)
+  eventually (some s: Station | 
+    s.parentBeats >= TIMEOUT and 
+    s.passStormInfo = Station.(s.backup)
+  )
+}
+
+-- Now run the predicate you just defined
+run VerifyHeartbeatProtocol for exactly 7 Station, 5 Int

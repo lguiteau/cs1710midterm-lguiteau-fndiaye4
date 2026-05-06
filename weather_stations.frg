@@ -1,6 +1,6 @@
 #lang forge/temporal
 // option run_sterling "layout.cnd"
-//option run_sterling "weather_stations.js"
+option run_sterling "weather_stations.js"
 
 option min_tracelength 5
 option max_tracelength 15

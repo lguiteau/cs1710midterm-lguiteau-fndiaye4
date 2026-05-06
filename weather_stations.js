@@ -1,8 +1,10 @@
 // weather_stations.js
 
+
 // 1. D3 is globally injected by Sterling. DO NOT use require('d3').
 // Clear any previous renders to prevent ghosting.
 d3.selectAll('svg > *').remove();
+
 
 // ---------------------------------------------------------------
 // ROBUST STATE EXTRACTION
@@ -12,12 +14,15 @@ const CEN_X = 180, CEN_Y = 180, RAD = 120;
 const CTRL_X = 350, CTRL_Y = 15, CTRL_W = 150;
 const LEG_X = 14, LEG_Y = 380, LEG_W = 500;
 
+
 function getAllStates() {
   const out = [];
   if (!instances || !instances.length) return out;
 
+
   const stationAtoms = instances[0].signature("Station").atoms();
   const stations = stationAtoms.map(a => String(a.id ? a.id() : a).trim());
+
 
   const poses = {};
   const degs = (Math.PI * 2) / stations.length;
@@ -28,8 +33,10 @@ function getAllStates() {
     };
   });
 
+
   instances.forEach((inst) => {
     let stateData = { nodes: {}, edges: [] };
+
 
     // Baseline nodes
     stations.forEach(sId => {
@@ -46,7 +53,9 @@ function getAllStates() {
       };
     });
 
+
     const getStr = a => String(a.id ? a.id() : a).trim();
+
 
     const process2 = (fieldStr, cb) => {
       try {
@@ -60,6 +69,7 @@ function getAllStates() {
       } catch (e) { }
     };
 
+
     const process3 = (fieldStr, cb) => {
       try {
         let f = inst.field(fieldStr);
@@ -71,6 +81,7 @@ function getAllStates() {
         }
       } catch (e) { }
     };
+
 
     // Extract Node States
     process2("failed", src => { if (stateData.nodes[src]) stateData.nodes[src].isFailed = true; });
@@ -85,11 +96,14 @@ function getAllStates() {
       if (stateData.nodes[src]) stateData.nodes[src].backupBeats = parseInt(tgt.replace(/[^0-9-]/g, "")) || 0;
     });
 
+
     // 1. First, map out which links are actively passing info this tick
+    //make sure tha there are guards here 
     const activePasses = new Set();
     process2("passStormInfo", (src, tgt) => {
       activePasses.add(`${src}->${tgt}`);
     });
+
 
     // Safely add edge
     const addEdge = (src, tgt, type) => {
@@ -98,11 +112,13 @@ function getAllStates() {
       }
     };
 
+
     // 2. Generate parent edges and style based on activePasses lookup
     process2("parent", (src, tgt) => {
       const isActive = activePasses.has(`${src}->${tgt}`);
       addEdge(src, tgt, isActive ? "parent-active" : "parent-inactive");
     });
+
 
     // 3. Generate backup edges and style based on activePasses lookup
     process3("backup", (src, parent, tgt) => {
@@ -110,24 +126,30 @@ function getAllStates() {
       addEdge(src, tgt, isActive ? "backup-active" : "backup-inactive");
     });
 
+
     out.push(stateData);
   });
+
 
   return out;
 }
 
+
 const states = getAllStates();
 const nStates = states.length || 1;
 let curIdx = 0;
+
 
 // ---------------------------------------------------------------
 // SETUP SVG & LAYERS
 // ---------------------------------------------------------------
 const root = d3.select(svg);
 
+
 const title = root.append('text')
   .attr('x', 15).attr('y', 25)
   .style('font-size', '14px').style('font-weight', 'bold').style('fill', '#222');
+
 
 const defs = root.append("defs");
 const addMarker = (id, color, scale) => {
@@ -140,14 +162,17 @@ const addMarker = (id, color, scale) => {
     .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", color);
 };
 
+
 // Create the 4 distinct markers
 addMarker("arrow-parent-inactive", "#999999", 1);
 addMarker("arrow-parent-active", "#2ca02c", 1.3);
 addMarker("arrow-backup-inactive", "#6495ED", 1);
 addMarker("arrow-backup-active", "#FF8C00", 1.3);
 
+
 const gEdges = root.append("g");
 const gNodes = root.append("g");
+
 
 // ---------------------------------------------------------------
 // UI PANELS
@@ -155,13 +180,16 @@ const gNodes = root.append("g");
 const foControls = root.append('foreignObject')
   .attr('x', CTRL_X).attr('y', CTRL_Y).attr('width', CTRL_W).attr('height', 50);
 
+
 const btnRow = foControls.append('xhtml:div')
   .style('display', 'flex').style('gap', '6px').style('font-family', 'sans-serif');
 const prevBtn = btnRow.append('xhtml:button').text('\u2190 Prev').style('cursor', 'pointer').style('flex', '1').style('padding', '6px');
 const nextBtn = btnRow.append('xhtml:button').text('Next \u2192').style('cursor', 'pointer').style('flex', '1').style('padding', '6px');
 
+
 const foLegend = root.append('foreignObject')
   .attr('x', LEG_X).attr('y', LEG_Y).attr('width', LEG_W).attr('height', 160);
+
 
 const legendContainer = foLegend.append('xhtml:div')
   .style('font-family', 'sans-serif').style('font-size', '12px')
@@ -169,10 +197,12 @@ const legendContainer = foLegend.append('xhtml:div')
   .style('border-radius', '6px').style('padding', '12px').style('box-sizing', 'border-box')
   .style('display', 'flex').style('justify-content', 'space-around');
 
+
 const col1 = legendContainer.append('xhtml:div');
 col1.append('xhtml:div').text('Node Status').style('font-weight', 'bold').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc');
 const col2 = legendContainer.append('xhtml:div');
 col2.append('xhtml:div').text('Network Edges').style('font-weight', 'bold').style('margin-bottom', '6px').style('border-bottom', '1px solid #ccc');
+
 
 const mkItem = (parent, icon, text) => {
   const d = parent.append('xhtml:div').style('margin-bottom', '6px').style('display', 'flex').style('align-items', 'center');
@@ -180,17 +210,20 @@ const mkItem = (parent, icon, text) => {
   d.append('xhtml:span').text(text);
 };
 
+
 mkItem(col1, '🟢', 'StormTrue');
 mkItem(col1, '🔴', 'StormFalse');
 mkItem(col1, '⚪', 'Waiting');
 mkItem(col1, '💠', 'Byzantine Node');
 mkItem(col1, '✖️', 'Failed/Silent Node');
 
+
 // The 4 dynamic edge states
 mkItem(col2, '<div style="width:20px;height:2px;background:#999999;"></div>', 'Parent (Not in use)');
 mkItem(col2, '<div style="width:20px;height:4px;background:#2ca02c;"></div>', 'Parent (Passing Info)');
 mkItem(col2, '<div style="width:20px;height:2px;border-top:2px dashed #6495ED;"></div>', 'Backup (Not in use)');
 mkItem(col2, '<div style="width:20px;height:4px;border-top:4px dashed #FF8C00;"></div>', 'Backup (Passing Info)');
+
 
 // ---------------------------------------------------------------
 // RENDER LOOP
@@ -199,10 +232,13 @@ function render(idx) {
   curIdx = Math.max(0, Math.min(nStates - 1, idx));
   const state = states[curIdx];
 
+
   title.text(`Weather Stations  ·  State ${curIdx + 1} / ${nStates}`);
+
 
   const edgeData = state ? state.edges : [];
   const link = gEdges.selectAll("line").data(edgeData, d => `${d.source}-${d.target}-${d.type}`);
+
 
   link.enter().append("line")
     .merge(link)
@@ -220,19 +256,25 @@ function render(idx) {
     .attr("stroke-dasharray", d => d.type.includes('backup') ? "5,3" : "none")
     .attr("marker-end", d => `url(#arrow-${d.type})`);
 
+
   link.exit().remove();
+
 
   const nodeData = state ? Object.values(state.nodes) : [];
   const nodeBind = gNodes.selectAll("g.node").data(nodeData, d => d.id);
 
+
   const nodeEnter = nodeBind.enter().append("g").attr("class", "node")
     .attr("transform", d => `translate(${d.x}, ${d.y})`);
+
 
   nodeEnter.append("path").attr("class", "shape").attr("stroke", "#333").attr("stroke-width", 1.5);
   nodeEnter.append("text").attr("class", "name").attr("dy", -16).attr("text-anchor", "middle").style("font-size", "11px").style("font-weight", "bold");
   nodeEnter.append("text").attr("class", "beats").attr("dy", 24).attr("text-anchor", "middle").style("font-size", "10px").style("fill", "#666");
 
+
   const nodeUpdate = nodeEnter.merge(nodeBind);
+
 
   nodeUpdate.select("path.shape")
     .attr("d", d => {
@@ -249,19 +291,50 @@ function render(idx) {
       return "#f0f0f0";
     });
 
+
   nodeUpdate.select("text.name").text(d => d.name);
   nodeUpdate.select("text.beats").text(d => {
     if (d.parentBeats > 0 || d.backupBeats > 0) return `P:${d.parentBeats} B:${d.backupBeats}`;
     return "";
   });
 
+
   nodeBind.exit().remove();
+
 
   prevBtn.property('disabled', curIdx === 0);
   nextBtn.property('disabled', curIdx === nStates - 1);
 }
 
+
 prevBtn.on('click', () => render(curIdx - 1));
 nextBtn.on('click', () => render(curIdx + 1));
 
+
 render(0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//GEMINI
+
+
+
+
+
+
+

@@ -22,12 +22,12 @@ sig Station {
   isByzantine:        lone StormBool  -- station is Byzantine
 }
 
-one sig Georgetown, Philadelphia, NewYork,
-        NewOrleans, Denver, LosAngeles, Dallas extends Station{}
+// one sig Georgetown, Philadelphia, NewYork,
+//         NewOrleans, Denver, LosAngeles, Dallas extends Station{}
         
 // -- Houston, Atlanta, Chicago extends Station {}
 
-fun TIMEOUT: Int { 2 }
+fun TIMEOUT: Int { 3 }
 
 -- Parent is live if counter is under threshold AND not failed
 pred parentLive[s: Station] {

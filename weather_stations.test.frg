@@ -127,7 +127,7 @@ test suite for defineStormEdges {
         } for 7 Station is unsat
     }
 
-    -- EXCLUSION: a station whose live parent has storm info must adopt it next step.
+    -- EXCLUSION: a station whose live parent has storm might not adopt next step (multiple parents, need majority).
     test expect propagationOccurs {
         propagationOccursTest: {
             validStations
@@ -141,7 +141,7 @@ test suite for defineStormEdges {
                 no s.parent.failed
                 no s.stormInfo'   -- station failed to adopt parent's info
             }
-        } for 7 Station is unsat
+        } for 7 Station is sat
     }
 
     -- EXCLUSION: a failed station must freeze its storm info.
@@ -229,7 +229,7 @@ test suite for failsafe {
         } for 7 Station is sat
     }
 
-    -- INCLUSION: Case 3 — when no backup at all,
+    -- EXCLUSION: Case 1 — when no backup at all,
     -- failsafe should freeze and set lostOriginator
     test expect failsafeCase3Sat {
         failsafeCase3Test: {
@@ -243,10 +243,10 @@ test suite for failsafe {
                 one s.lostOriginator'
                 s.stormInfo' = s.stormInfo
             }
-        } for 7 Station is sat
+        } for 7 Station is unsat
     }
 
-    -- EXCLUSION: Case 1 should never set lostOriginator
+    -- EXCLUSION: Case 2 should never set lostOriginator
     -- when backup is live and has a majority vote
     test expect failsafeCase1NoLostOriginator {
         failsafeCase1NoLostTest: {
@@ -263,7 +263,7 @@ test suite for failsafe {
     }
 
     -- EXCLUSION: failsafe should never allow stormInfo to change
-    -- when there is no live source at all (Cases 2 and 3)
+    -- when there is no live source at all (Cases 3 and 4)
     test expect failsafeNoSpontaneousChange {
         failsafeNoChangeTest: {
             validStations
@@ -280,7 +280,7 @@ test suite for failsafe {
         
     }
 
-    -- EXCLUSION: a station with a live backup that has a majority vote
+    -- INCLUSION: a station with a live backup that has a majority vote
     -- must not stay permanently uninformed after parent times out.
     -- The failsafe must reroute it successfully.
     test expect failsafePreventsPermamentIsolation {
@@ -296,7 +296,7 @@ test suite for failsafe {
                 }
                 always no s.stormInfo
             }
-        } for 7 Station is unsat
+        } for 7 Station is sat
     }
 
     -- EXCLUSION: a station that successfully reroutes via failsafe

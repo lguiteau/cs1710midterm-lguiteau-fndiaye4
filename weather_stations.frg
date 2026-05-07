@@ -9,10 +9,10 @@ abstract sig StormBool {}
 one sig StormFalse, StormTrue extends StormBool {}
 
 sig Station {
-  parent:          set Station,                -- set of direct parents
-  backup:          pfunc Station -> Station,   -- Partial function mapping a parent to its backup
-  var passStormInfo:   set Station,                -- set of stations passing info (VAR... GEMINI)
-  originatesInfo:  lone StormBool,
+  parent:              set Station,                 -- set of direct parents
+  backup:              pfunc Station -> Station,    -- partial function mapping a parent to its backup
+  var passStormInfo:   set Station,                 -- set of stations passing info
+  originatesInfo:      lone StormBool,
 
   var stormInfo:      lone StormBool,
   var parentBeats:    one Int,
@@ -40,11 +40,6 @@ pred backupLive[s: Station] {
   s.backupBeats < TIMEOUT
 }
 
-// -- What a station actually broadcasts this tick:
-// -- none if it has failed, its stormInfo otherwise
-// fun broadcasts[s: Station]: lone StormBool {
-//   (some s.failed) => none else s.stormInfo
-// }
 
 -- what a station actually broadcasts this tick
 fun broadcasts[s: Station]: lone StormBool {
@@ -243,19 +238,19 @@ pred defineStormEdges {
     no s.failed implies {
       let src = liveSource[s] | {
 
-        -- Normal: live source is alive and has info
+        -- normal: live source is alive and has info
         (some src and some majorityVote[src]) implies {
           s.stormInfo'     = majorityVote[src]
           no s.lostOriginator'
         }
 
-        -- Waiting: live source exists but failed or no info yet
+        -- waiting: live source exists but failed or no info yet
         (some src and no majorityVote[src]) implies {
           s.stormInfo'     = s.stormInfo
           no s.lostOriginator'
         }
 
-        -- Isolated: no live source
+        -- isolated: no live source
         no src implies {
           s.stormInfo' = s.stormInfo
 
@@ -346,5 +341,4 @@ pred VerifyHeartbeatProtocol {
   )
 }
 
--- Now run the predicate you just defined
 run VerifyHeartbeatProtocol for exactly 7 Station, 5 Int

@@ -57,6 +57,20 @@ test suite for validStations {
             }
         } for 7 Station is sat
     }
+    
+    -- INCLUSION: Byzantine stations are structurally valid and can exist 
+    -- anywhere in the network (as originators or children).
+    test expect byzantineCanBeAnywhere {
+        byzantineAnywhereTest: {
+            validStations
+            some s1, s2: Station | {
+                some s1.isByzantine 
+                some s2.isByzantine 
+                some s1.originatesInfo 
+                no s2.originatesInfo
+            }
+        } for 7 Station is sat
+    }
 
 }
 
@@ -101,6 +115,15 @@ test suite for init {
         beatsZeroTest: {
             init
             some s: Station | s.parentBeats != 0 or s.backupBeats != 0
+        } for 7 Station is unsat
+    }
+    
+    -- EXCLUSION: Being Byzantine does not change an originator's internal initialized storm info.
+    -- They lie when broadcasting, but internally they know the truth at t=0.
+    test expect byzantineOriginatorHasCorrectInitialInfo {
+        byzantineInitTest: {
+            init
+            some s: Station | some s.isByzantine and some s.originatesInfo and s.stormInfo != s.originatesInfo
         } for 7 Station is unsat
     }
 
@@ -181,6 +204,50 @@ test suite for defineStormEdges {
                 s.stormInfo' != s.stormInfo
             }
         } for 7 Station is unsat
+    }
+    
+    -- INCLUSION: If all parents are Byzantine, live, and have StormTrue, 
+    -- they broadcast StormFalse. The child will adopt StormFalse (the opposite).
+    test expect childAdoptsByzantineLies {
+        childAdoptsLiesTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                parentLive[s]
+                -- all parents are live, byzantine, and have StormTrue
+                some s.parent
+                all p: s.parent | {
+                    some p.isByzantine
+                    no p.failed
+                    p.stormInfo = StormTrue
+                }
+                -- Child adopts the lie (StormFalse)
+                s.stormInfo' = StormFalse
+            }
+        } for 7 Station is sat
+    }
+
+    -- INCLUSION: A mix of Byzantine and normal nodes can cause a tie/no majority,
+    -- resulting in the child keeping its info and incrementing its beat counter.
+    test expect byzantineCausesNoMajorityAndBeatsIncrement {
+        byzantineSplitTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                parentLive[s]
+                -- Given an odd number of parents (e.g. 3), one fails, one is normal (True), one is Byz (False).
+                -- The majorityVote resolves to 'none'.
+                no majorityVote[s.parent]
+                -- Because there's no majority, the beat increments.
+                s.parentBeats' = add[s.parentBeats, 1]
+            }
+        } for 7 Station is sat
     }
 
 }
@@ -278,9 +345,7 @@ test suite for failsafe {
         } for 7 Station is unsat
     }
         
-    }
-
-    -- INCLUSION: a station with a live backup that has a majority vote
+    -- EXCLUSION: a station with a live backup that has a majority vote
     -- must not stay permanently uninformed after parent times out.
     -- The failsafe must reroute it successfully.
     test expect failsafePreventsPermamentIsolation {
@@ -290,13 +355,14 @@ test suite for failsafe {
                 no s.originatesInfo
                 no s.failed
                 eventually {
+                    failsafe[s]
                     s.parentBeats >= TIMEOUT
                     backupLive[s]
                     some majorityVote[Station.(s.backup)]
                 }
                 always no s.stormInfo
             }
-        } for 7 Station is sat
+        } for 7 Station is unsat
     }
 
     -- EXCLUSION: a station that successfully reroutes via failsafe
@@ -312,10 +378,36 @@ test suite for failsafe {
                     backupLive[s]
                     some majorityVote[Station.(s.backup)]
                     one s.lostOriginator'  -- incorrectly marked lost despite successful reroute
+                    failsafe[s]
                 }
             }
         } for 7 Station is unsat
     }
+    
+    -- INCLUSION: Failsafe relies on backups. If the backups are Byzantine, 
+    -- the failsafe will successfully route, but the node will adopt the backup's lies.
+    test expect failsafeAdoptsByzantineBackupLies {
+        failsafeByzBackupTest: {
+            validStations
+            init
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                backupLive[s]
+                some Station.(s.backup)
+                -- backups are byzantine and hold StormTrue, so they broadcast StormFalse
+                all b: Station.(s.backup) | {
+                    some b.isByzantine
+                    no b.failed
+                    b.stormInfo = StormTrue
+                }
+                failsafe[s]
+                -- it correctly reroutes, but adopts the opposite info
+                s.stormInfo' = StormFalse
+            }
+        } for 7 Station is sat
+    }
+}
 
 
 
@@ -381,6 +473,22 @@ test suite for traces {
             some s: Station | eventually one s.lostOriginator
         } for 7 Station is sat
     }
-
+    
+    -- INCLUSION: End-to-end propagation can result in a station permanently holding 
+    -- the wrong info (StormFalse) when the originator sent StormTrue, due to Byzantine flips.
+    test expect systemCanPropagateWrongInfo {
+        wrongInfoPropagationTest: {
+            traces
+            some orig: Station | {
+                some orig.originatesInfo
+                orig.stormInfo = StormTrue
+            }
+            eventually {
+                some s: Station | {
+                    no s.originatesInfo
+                    s.stormInfo = StormFalse
+                }
+            }
+        } for 7 Station is sat
+    }
 }
-

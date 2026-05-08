@@ -1,5 +1,4 @@
 #lang forge/temporal
-// option run_sterling "layout.cnd"
 option run_sterling "weather_stations.js"
 
 option min_tracelength 5
@@ -22,10 +21,6 @@ sig Station {
   isByzantine:        lone StormBool  -- station is Byzantine
 }
 
-// one sig Georgetown, Philadelphia, NewYork,
-//         NewOrleans, Denver, LosAngeles, Dallas extends Station{}
-        
-// -- Houston, Atlanta, Chicago extends Station {}
 
 fun TIMEOUT: Int { 3 }
 
@@ -121,10 +116,6 @@ pred failuresSticky {
 }
 
 
-// -- at most one originator can fail (keeps traces readable)
-// pred boundedFailures {
-//   lone s: Station | some s.originatesInfo and some s.failed
-// }
 
 -- TEMPORARY FIX: allow up to TWO originators to fail, to enable testing of majority silence
 pred boundedFailures {
@@ -199,13 +190,6 @@ pred failsafe[s: Station] {
 }
 
 pred defineStormEdges {
-  // -- Originators: stormInfo unchanged, but failed ones broadcast nothing
-  // all s: Station | (some s.originatesInfo) implies {
-  //   s.stormInfo'      = s.stormInfo   -- internal value stays
-  //   s.passStormInfo = none
-  //   no s.lostOriginator'
-  // }
-
   -- split originator block into healthy vs failed
   -- healthy originators leave failed' unconstrained (nondeterministic failure)
   all s: Station | (some s.originatesInfo and no s.failed) implies {
@@ -254,20 +238,8 @@ pred defineStormEdges {
         no src implies {
           s.stormInfo' = s.stormInfo
 
-          // -- Originator timed out → call failsafe
-          // (some s.parent and some s.parent.originatesInfo
-          //  and s.parentBeats >= TIMEOUT) implies {
-          //   one s.lostOriginator'
-          //   failsafe[s]
-          // }
 
-          // -- Regular node timed out → no escalation
-          // (some s.parent and no s.parent.originatesInfo) implies {
-          //   no s.lostOriginator'
-          // }
-
-
-          -- GEMINI ... This means that if the parent is timed out, we call failsafe, but if the parent is not an originator, 
+          -- This means that if the parent is timed out, we call failsafe, but if the parent is not an originator, 
           -- we don't call failsafe even if it's timed out. This allows us to test the case where a non-originator parent is 
           --Byzantine and goes silent, but the station doesn't call failsafe because it doesn't realize the parent is an originator.
           (s.parentBeats >= TIMEOUT) implies {
@@ -294,36 +266,6 @@ pred traces {
   eventually (some s: Station | some s.originatesInfo and some s.failed)
 }
 
-// run {
-//   traces
-//   some disj s1, s2: Station | {
-//     some s1.originatesInfo
-//     some s2.originatesInfo
-//   }
-//   some s: Station | some s.originatesInfo and eventually some s.failed
-  
-//   -- at least one node is actively Byzantine
-//   some s: Station | some s.isByzantine 
-  
-//   some s: Station | eventually s.parentBeats > 0
-// } for exactly 10 Station, 5 Int
-
-// run {
-//   some disj s1, s2: Station | {
-//     some s1.originatesInfo
-//     some s2.originatesInfo
-//     no s1.parent
-//     no s2.parent
-//   }
-//   some s: Station | {
-//     no s.originatesInfo
-//     some s.parent
-//     some s.parent.originatesInfo
-//   }
-//   init
-//   eventually (some s: Station | some s.originatesInfo and some s.failed)
-//   some s: Station | eventually s.parentBeats = 3
-// } for 5 Station, 5 Int
 
 pred VerifyHeartbeatProtocol {
   traces

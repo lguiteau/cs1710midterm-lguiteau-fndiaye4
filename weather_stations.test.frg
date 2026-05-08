@@ -492,3 +492,165 @@ test suite for traces {
         } for 7 Station is sat
     }
 }
+
+
+
+-- ============================================================
+-- Heartbeat Counter Mechanics
+-- These tests verify the precise behavior of the parentBeats
+-- and backupBeats counters — incrementing, capping, resetting,
+-- and independence from each other.
+-- ============================================================
+
+test suite for updateMissedBeats {
+
+    -- EXCLUSION: parentBeats must increment by exactly 1 when parent
+    -- has no majority vote (is silent or uninformed).
+    test expect parentBeatsIncrementsByOne {
+        parentBeatsIncrementTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.parent
+                no majorityVote[s.parent]
+                s.parentBeats < TIMEOUT
+                s.parentBeats' != add[s.parentBeats, 1]
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: parentBeats must reset to 0 when parent has a majority vote.
+    test expect parentBeatsResetsOnMajority {
+        parentBeatsResetTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.parent
+                some majorityVote[s.parent]
+                s.parentBeats' != 0
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: parentBeats must never exceed TIMEOUT — it should
+    -- cap at TIMEOUT rather than continuing to increment.
+    test expect parentBeatsCapsAtTimeout {
+        parentBeatsCapTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.parent
+                s.parentBeats >= TIMEOUT
+                s.parentBeats' > TIMEOUT
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: backupBeats must increment by exactly 1 when backup
+    -- has no majority vote.
+    test expect backupBeatsIncrementsByOne {
+        backupBeatsIncrementTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.backup
+                no majorityVote[Station.(s.backup)]
+                s.backupBeats < TIMEOUT
+                s.backupBeats' != add[s.backupBeats, 1]
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: backupBeats must reset to 0 when backup has a majority vote.
+    test expect backupBeatsResetsOnMajority {
+        backupBeatsResetTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.backup
+                some majorityVote[Station.(s.backup)]
+                s.backupBeats' != 0
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: backupBeats must never exceed TIMEOUT.
+    test expect backupBeatsCapsAtTimeout {
+        backupBeatsCapTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.backup
+                s.backupBeats >= TIMEOUT
+                s.backupBeats' > TIMEOUT
+            }
+        } for 7 Station is unsat
+    }
+
+    -- EXCLUSION: parentBeats and backupBeats must update independently —
+    -- a silent parent must not cause backupBeats to increment.
+    test expect countersUpdateIndependently {
+        countersIndependentTest: {
+            validStations
+            init
+            defineStormEdges
+            some s: Station | {
+                no s.originatesInfo
+                some s.parent
+                some s.backup
+                no majorityVote[s.parent]         -- parent is silent
+                some majorityVote[Station.(s.backup)] -- backup is healthy
+                s.backupBeats' != 0               -- backupBeats incorrectly incremented
+            }
+        } for 7 Station is unsat
+    }
+
+    -- INCLUSION: it should be possible for parentBeats to reach exactly
+    -- TIMEOUT across a valid trace, confirming the threshold is reachable.
+    test expect parentBeatsCanReachTimeout {
+        parentBeatsTimeoutTest: {
+            traces
+            eventually (some s: Station | s.parentBeats = TIMEOUT)
+        } for 7 Station is sat
+    }
+
+    -- INCLUSION: failsafe should trigger at exactly TIMEOUT, not before.
+    test expect failsafeTriggersAtTimeout {
+        failsafeThresholdTest: {
+            traces
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                eventually {
+                    s.parentBeats = TIMEOUT
+                    s.passStormInfo = Station.(s.backup)
+                }
+            }
+        } for 7 Station is sat
+    }
+
+    -- EXCLUSION: failsafe must not trigger before parentBeats reaches TIMEOUT.
+    test expect failsafeDoesNotTriggerEarly {
+        failsafeEarlyTest: {
+            traces
+            some s: Station | {
+                no s.originatesInfo
+                no s.failed
+                s.parentBeats < TIMEOUT
+                s.passStormInfo = Station.(s.backup)
+            }
+        } for 7 Station is unsat
+    }
+}
